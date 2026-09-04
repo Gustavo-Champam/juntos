@@ -13,8 +13,12 @@
   "scripts": {
     "dev:web": "npm --workspace @juntos/web run dev",
     "dev:api": "npm --workspace @juntos/api run dev",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test:deploy && npm run test --workspaces --if-present",
+    "test:deploy": "node --test tests/*.test.mjs",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "yaml": "^2.9.0"
   }
 }

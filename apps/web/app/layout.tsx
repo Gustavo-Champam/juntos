@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Manrope, Newsreader } from "next/font/google";
+import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -25,7 +26,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       lang="pt-BR"
       className={`${manrope.variable} ${newsreader.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorkerRegister />
+      </body>
     </html>
   );
 }
