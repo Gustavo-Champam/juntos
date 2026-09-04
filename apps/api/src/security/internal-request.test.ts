@@ -7,6 +7,7 @@ import {
 } from "./internal-request.js";
 
 const apps: Array<ReturnType<typeof Fastify>> = [];
+const clientId = "a".repeat(64);
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
@@ -49,14 +50,16 @@ describe("buildInternalRequestGuard", () => {
     const response = await app.inject({
       method: "GET",
       url: "/internal/test",
-      ...(key ? { headers: { "x-juntos-proxy-key": key } } : {}),
+      ...(key
+        ? { headers: { "x-juntos-proxy-key": key, "x-juntos-client-id": clientId } }
+        : {}),
     });
 
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: "request_failed" });
   });
 
-  it("allows a request with the exact proxy key to reach the handler", async () => {
+  it("allows a request with exact trusted boundary headers to reach the handler", async () => {
     const app = Fastify({ logger: false });
     apps.push(app);
     app.get(
@@ -68,10 +71,38 @@ describe("buildInternalRequestGuard", () => {
     const response = await app.inject({
       method: "GET",
       url: "/internal/test",
-      headers: { "x-juntos-proxy-key": "correct-key" },
+      headers: {
+        "x-juntos-proxy-key": "correct-key",
+        "x-juntos-client-id": clientId,
+      },
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ reached: true });
   });
+
+  it.each([undefined, "not-a-hash", "A".repeat(64)])(
+    "rejects a missing or malformed trusted client identifier generically",
+    async (providedClientId) => {
+      const app = Fastify({ logger: false });
+      apps.push(app);
+      app.get(
+        "/internal/test",
+        { preHandler: buildInternalRequestGuard("correct-key") },
+        async () => ({ reached: true }),
+      );
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/internal/test",
+        headers: {
+          "x-juntos-proxy-key": "correct-key",
+          ...(providedClientId ? { "x-juntos-client-id": providedClientId } : {}),
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error: "request_failed" });
+    },
+  );
 });

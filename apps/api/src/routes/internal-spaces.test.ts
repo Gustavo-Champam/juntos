@@ -13,7 +13,10 @@ import { SpaceService } from "../spaces/space-service.js";
 const migrationsDirectory = fileURLToPath(
   new URL("../../migrations", import.meta.url),
 );
-const proxyHeaders = { "x-juntos-proxy-key": "internal-key" };
+const proxyHeaders = {
+  "x-juntos-proxy-key": "internal-key",
+  "x-juntos-client-id": "a".repeat(64),
+};
 const apps: Array<ReturnType<typeof buildApp>> = [];
 
 function sequenceUuid() {

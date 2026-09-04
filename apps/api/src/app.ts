@@ -1,7 +1,7 @@
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
-import Fastify from "fastify";
+import Fastify, { LogController } from "fastify";
 import type { FastifyServerOptions } from "fastify";
 
 import healthRoutes from "./routes/health.js";
@@ -10,7 +10,10 @@ import internalAuthRoutes, {
   type InternalRouteDependencies,
 } from "./routes/internal-auth.js";
 import internalSpacesRoutes from "./routes/internal-spaces.js";
-import { buildInternalRequestGuard } from "./security/internal-request.js";
+import {
+  buildInternalRequestGuard,
+  getTrustedClientId,
+} from "./security/internal-request.js";
 
 type IdentityAppDependencies = InternalRouteDependencies & {
   internalProxyKey: string;
@@ -26,6 +29,7 @@ export function buildApp(options: BuildAppOptions) {
   const app = Fastify({
     logger: options.logger ?? true,
     bodyLimit: 16 * 1024,
+    logController: new LogController({ disableRequestLogging: true }),
   });
 
   app.register(cors, {
@@ -71,9 +75,16 @@ export function buildApp(options: BuildAppOptions) {
           global: true,
           max: 60,
           timeWindow: "15 minutes",
+          keyGenerator: (request) =>
+            getTrustedClientId(request.headers["x-juntos-client-id"]) ?? "invalid-client",
         });
         await internal.register(internalAuthRoutes, dependencies);
         await internal.register(internalSpacesRoutes, dependencies);
+        internal.setNotFoundHandler(async (request, reply) => {
+          reply.header("Cache-Control", "no-store");
+          logRequestFailure(request, 404);
+          await reply.code(404).send({ error: "request_failed" });
+        });
       },
       { prefix: "/internal" },
     );
