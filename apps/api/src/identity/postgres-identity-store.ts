@@ -95,13 +95,13 @@ export class PostgresIdentityStore implements IdentityStore {
       const membership = await client.query<{ space_id: string }>("SELECT space_id FROM memberships WHERE user_id = $1 FOR UPDATE", [userId]);
       const spaceId = membership.rows[0]?.space_id;
       if (!spaceId) throw new Error("user does not belong to a space");
-      const space = await client.query<SpaceRow>("SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 FOR UPDATE", [spaceId]);
-      if (!space.rows[0] || space.rows[0].archived_at) throw new Error("space is unavailable");
       await client.query(
         `UPDATE invitations SET revoked_at = $2
          WHERE space_id = $1 AND accepted_at IS NULL AND revoked_at IS NULL`,
         [spaceId, createdAt],
       );
+      const space = await client.query<SpaceRow>("SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 FOR UPDATE", [spaceId]);
+      if (!space.rows[0] || space.rows[0].archived_at) throw new Error("space is unavailable");
       await client.query(
         `INSERT INTO invitations (id, space_id, created_by, invited_email, token_hash, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,

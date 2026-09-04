@@ -4,6 +4,7 @@ import { DataType, newDb } from "pg-mem";
 import { describe, expect, it } from "vitest";
 
 import { applyMigrations } from "../db/migration-runner.js";
+import type { Database } from "../db/pool.js";
 import { hashOpaqueToken } from "../security/tokens.js";
 import { PostgresIdentityStore } from "./postgres-identity-store.js";
 
@@ -11,6 +12,79 @@ const migrationsDirectory = fileURLToPath(new URL("../../migrations", import.met
 const anaId = "00000000-0000-0000-0000-000000000001";
 const biaId = "00000000-0000-0000-0000-000000000002";
 const claraId = "00000000-0000-0000-0000-000000000003";
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: (() => void) | undefined;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve: () => resolve?.() };
+}
+
+class InvitationLockDatabase {
+  readonly invitationLocked = deferred();
+  readonly creationBlocked = deferred();
+  readonly allowAcceptance = deferred();
+  private readonly invitationReleased = deferred();
+  private readonly spaceReleased = deferred();
+  private invitationOwner: "accept" | "create" | null = null;
+  private spaceOwner: "accept" | "create" | null = null;
+
+  async connect() {
+    let role: "accept" | "create" | null = null;
+    return {
+      query: async <T>(statement: string) => {
+        const sql = statement.replace(/\s+/g, " ").trim().toLowerCase();
+        if (sql === "begin" || sql === "rollback") return { rows: [] } as { rows: T[] };
+        if (sql === "commit") {
+          if (this.invitationOwner === role) {
+            this.invitationOwner = null;
+            this.invitationReleased.resolve();
+          }
+          if (this.spaceOwner === role) {
+            this.spaceOwner = null;
+            this.spaceReleased.resolve();
+          }
+          return { rows: [] } as { rows: T[] };
+        }
+        if (sql.includes("from invitations") && sql.includes("for update")) {
+          role = "accept";
+          this.invitationOwner = role;
+          this.invitationLocked.resolve();
+          await this.allowAcceptance.promise;
+          return { rows: [{ id: "invite", space_id: "space", invited_email: null, expires_at: new Date("2026-10-01T00:00:00.000Z"), accepted_at: null, revoked_at: null }] } as { rows: T[] };
+        }
+        if (sql.includes("from memberships") && sql.includes("user_id = $1 for update")) {
+          role = "create";
+          return { rows: [{ space_id: "space" }] } as { rows: T[] };
+        }
+        if (sql.startsWith("update invitations set revoked_at")) {
+          role = "create";
+          if (this.invitationOwner === "accept") {
+            this.creationBlocked.resolve();
+            if (this.spaceOwner === "create") throw new Error("deadlock detected");
+            await this.invitationReleased.promise;
+          }
+          this.invitationOwner = role;
+          return { rows: [] } as { rows: T[] };
+        }
+        if (sql.includes("from couple_spaces") && sql.includes("for update")) {
+          if (role === "create") this.creationBlocked.resolve();
+          if (this.spaceOwner === "create" && role === "accept") await this.spaceReleased.promise;
+          this.spaceOwner = role;
+          return { rows: [{ id: "space", name: "Casa", archived_at: null }] } as { rows: T[] };
+        }
+        if (sql.startsWith("select count(*)")) return { rows: [{ member_count: 1 }] } as { rows: T[] };
+        if (sql.startsWith("select email from users")) return { rows: [{ email: "bia@example.com" }] } as { rows: T[] };
+        if (sql.startsWith("select space_id from memberships")) return { rows: [] } as { rows: T[] };
+        return { rows: [] } as { rows: T[] };
+      },
+      release: () => undefined,
+    };
+  }
+
+  async query() {
+    throw new Error("root queries are not used in this transaction test");
+  }
+}
 
 async function createStore() {
   const database = newDb({ noAstCoverageCheck: true });
@@ -114,5 +188,19 @@ describe("PostgresIdentityStore", () => {
     await store.createInvitation(anaId, replacementHash, undefined, new Date("2026-09-12T00:00:00.000Z"), new Date("2026-09-05T00:00:00.000Z"));
 
     expect((await pool.query("SELECT revoked_at FROM invitations WHERE token_hash = $1", [firstHash])).rows[0]).toEqual({ revoked_at: new Date("2026-09-05T00:00:00.000Z") });
+  });
+
+  it("serializes accepting and replacing an invitation without a lock cycle", async () => {
+    const database = new InvitationLockDatabase();
+    const store = new PostgresIdentityStore(database as unknown as Database);
+    const acceptedAt = new Date("2026-09-05T00:00:00.000Z");
+    const accepting = store.acceptInvitation(biaId, hashOpaqueToken("a".repeat(43)), acceptedAt);
+
+    await database.invitationLocked.promise;
+    const replacing = store.createInvitation(anaId, hashOpaqueToken("b".repeat(43)), undefined, new Date("2026-09-12T00:00:00.000Z"), acceptedAt);
+    await database.creationBlocked.promise;
+    database.allowAcceptance.resolve();
+
+    await expect(Promise.all([accepting, replacing])).resolves.toEqual([undefined, undefined]);
   });
 });
