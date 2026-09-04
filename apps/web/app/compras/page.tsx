@@ -1,4 +1,7 @@
+"use client";
+
 import { ShoppingBasket } from "lucide-react";
+import { useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 
@@ -14,6 +17,27 @@ const shoppingItems = [
 ] as const;
 
 export default function ShoppingPage() {
+  const [checkedItems, setCheckedItems] = useState<ReadonlySet<string>>(
+    () =>
+      new Set(
+        shoppingItems.filter((item) => item.checked).map((item) => item.name),
+      ),
+  );
+
+  function toggleItem(name: string) {
+    setCheckedItems((currentItems) => {
+      const nextItems = new Set(currentItems);
+
+      if (nextItems.has(name)) {
+        nextItems.delete(name);
+      } else {
+        nextItems.add(name);
+      }
+
+      return nextItems;
+    });
+  }
+
   return (
     <AppShell currentPath="/compras">
       <section className="collection-view" aria-labelledby="shopping-title">
@@ -23,9 +47,9 @@ export default function ShoppingPage() {
             <h1 id="shopping-title">Lista de compras</h1>
             <p>Uma lista única para os dois acompanharem sem duplicar itens.</p>
           </div>
-          <span className="collection-count">
+          <span className="collection-count" aria-live="polite">
             <ShoppingBasket size={16} aria-hidden="true" />
-            2 de 8 comprados
+            {checkedItems.size} de {shoppingItems.length} comprados
           </span>
         </header>
 
@@ -33,7 +57,11 @@ export default function ShoppingPage() {
           <legend>Itens para esta semana</legend>
           {shoppingItems.map((item) => (
             <label className="shopping-row" key={item.name}>
-              <input type="checkbox" defaultChecked={item.checked} />
+              <input
+                type="checkbox"
+                checked={checkedItems.has(item.name)}
+                onChange={() => toggleItem(item.name)}
+              />
               <span className="shopping-check" aria-hidden="true" />
               <span className="shopping-copy">
                 <strong>{item.name}</strong>

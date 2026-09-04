@@ -5,7 +5,7 @@
   --surface: #fcfbf7;
   --ink: #20231d;
   --muted: #6a7064;
-  --soft-muted: #93988d;
+  --soft-muted: #6a7064;
   --line: #dcd9cf;
   --line-strong: #c9c8bd;
   --sage: #68785a;
@@ -25,7 +25,7 @@
 }
 
 html {
-  min-width: 320px;
+  min-width: 0;
   background: var(--paper);
   color-scheme: light;
 }

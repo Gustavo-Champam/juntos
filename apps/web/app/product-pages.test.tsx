@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -42,6 +42,17 @@ describe("product pages", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("3 refeições por dia")).toBeInTheDocument();
     expect(screen.getAllByText("Rápida").length).toBeGreaterThan(0);
+
+    const days = within(
+      screen.getByRole("list", { name: "Refeições da semana" }),
+    ).getAllByRole("listitem");
+
+    expect(days).toHaveLength(7);
+    days.forEach((day) => {
+      expect(
+        within(day).getAllByText(/^(Café|Almoço|Jantar)$/),
+      ).toHaveLength(3);
+    });
   });
 
   it("shows a usable shared shopping checklist", async () => {
@@ -57,6 +68,15 @@ describe("product pages", () => {
     expect(
       screen.getByRole("group", { name: "Itens para esta semana" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("checkbox").length).toBeGreaterThanOrEqual(6);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(8);
+
+    const banana = screen.getByRole("checkbox", { name: /Banana/ });
+    expect(banana).not.toBeChecked();
+    expect(screen.getByText("2 de 8 comprados")).toBeInTheDocument();
+
+    fireEvent.click(banana);
+
+    expect(banana).toBeChecked();
+    expect(screen.getByText("3 de 8 comprados")).toBeInTheDocument();
   });
 });

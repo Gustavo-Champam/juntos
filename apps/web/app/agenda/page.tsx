@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 
 const commitments = [
   {
-    day: "Hoje",
+    day: "Sexta",
     date: "4 set",
     time: "08:30",
     title: "Começar o trabalho",
@@ -12,7 +12,7 @@ const commitments = [
     place: "Trabalho",
   },
   {
-    day: "Hoje",
+    day: "Sexta",
     date: "4 set",
     time: "19:00",
     title: "Faculdade",
