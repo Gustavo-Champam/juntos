@@ -104,13 +104,14 @@ Expected: the test fails because the schema is not implemented.
 
 - [ ] **Step 4: Implement the smallest health contract**
 
-Export `healthResponseSchema` and the inferred `HealthResponse` type from `packages/contracts/src/index.ts`.
+Export `healthResponseSchema` and the inferred `HealthResponse` type from `packages/contracts/src/index.ts`. The package must compile declarations and JavaScript to `dist/`; consumers must run this shared build through their `pretest` and `prebuild` lifecycle scripts so clean cloud builds never depend on locally generated files.
 
 - [ ] **Step 5: Verify and commit**
 
 ```powershell
 npm --workspace @juntos/contracts test
 npm --workspace @juntos/contracts run typecheck
+npm --workspace @juntos/contracts run build
 git add package.json package-lock.json .gitignore .env.example packages/contracts
 git commit -m "build: create Juntos workspace"
 ```
@@ -132,7 +133,7 @@ git commit -m "build: create Juntos workspace"
 
 - [ ] **Step 1: Create the API package**
 
-Use Fastify 5, `@fastify/cors`, Zod, dotenv, and `@juntos/contracts`. Add `dev`, `build`, `start`, `test`, and `typecheck` scripts. Production start must execute the compiled server.
+Use Fastify 5, `@fastify/cors`, Zod, dotenv, and `@juntos/contracts`. Add `dev`, `build`, `start`, `test`, and `typecheck` scripts. Add `pretest` and `prebuild` scripts that compile `@juntos/contracts` first. Production start must execute the compiled server.
 
 - [ ] **Step 2: Write the failing route test**
 
@@ -194,7 +195,7 @@ git commit -m "feat: add deployable API health service"
 npx create-next-app@latest apps/web --yes --typescript --tailwind --eslint --app --no-src-dir --import-alias "@/*" --skip-install
 ```
 
-Rename the package to `@juntos/web`, declare the `@juntos/contracts` workspace dependency, add Vitest, Testing Library, and jsdom, then run only the root `npm install`.
+Rename the package to `@juntos/web`, declare the `@juntos/contracts` workspace dependency, add Vitest, Testing Library, and jsdom, then run only the root `npm install`. Add `pretest` and `prebuild` scripts that compile `@juntos/contracts` first.
 
 - [ ] **Step 2: Configure component tests**
 
