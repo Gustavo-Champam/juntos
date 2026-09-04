@@ -3,7 +3,7 @@ services:
     name: juntos-api
     runtime: node
     plan: free
-    buildCommand: npm ci && npm --workspace @juntos/api run build
+    buildCommand: npm ci --include=dev --workspace @juntos/api --workspace @juntos/contracts && npm --workspace @juntos/api run build
     startCommand: npm --workspace @juntos/api run start
     healthCheckPath: /health
     envVars:
