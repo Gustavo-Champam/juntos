@@ -156,7 +156,7 @@ describe("internal authentication routes", () => {
     const invalidBody = await app.inject({
       method: "POST",
       url: "/internal/auth/google/exchange",
-      headers: proxyHeaders,
+      headers: clientHeaders(),
       payload: { code: invalidInput, codeVerifier: "short", nonce: "nonce" },
     });
     expect(invalidBody.statusCode).toBe(400);
