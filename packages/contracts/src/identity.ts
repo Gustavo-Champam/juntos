@@ -4,6 +4,7 @@ const nameSchema = z.string().trim().min(1).max(80);
 const emailSchema = z.string().trim().toLowerCase().email().max(254);
 const idSchema = z.string().min(1);
 const urlSafeTokenSchema = z.string().regex(/^[A-Za-z0-9_-]+$/).min(43).max(256);
+const sessionTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 export const publicUserSchema = z.object({
   id: idSchema,
@@ -38,7 +39,7 @@ export const googleExchangeRequestSchema = z.object({
 export type GoogleExchangeRequest = z.infer<typeof googleExchangeRequestSchema>;
 
 export const googleExchangeResponseSchema = z.object({
-  sessionToken: z.string().min(1),
+  sessionToken: sessionTokenSchema,
   user: publicUserSchema,
   space: coupleSpaceSchema.nullable(),
 }).strict();

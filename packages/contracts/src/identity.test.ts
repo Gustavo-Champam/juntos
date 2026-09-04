@@ -44,9 +44,11 @@ describe("identity contracts", () => {
       codeVerifier: "a".repeat(43),
       nonce: "nonce_value-1",
     });
-    expect(googleExchangeResponseSchema.parse({ sessionToken: "session", user: { id, email: "ana@example.com", name: "Ana", avatarUrl: null }, space: null })).toEqual(
-      expect.objectContaining({ sessionToken: "session" }),
+    const sessionToken = "a".repeat(43);
+    expect(googleExchangeResponseSchema.parse({ sessionToken, user: { id, email: "ana@example.com", name: "Ana", avatarUrl: null }, space: null })).toEqual(
+      expect.objectContaining({ sessionToken }),
     );
+    expect(() => googleExchangeResponseSchema.parse({ sessionToken: "session", user: { id, email: "ana@example.com", name: "Ana", avatarUrl: null }, space: null })).toThrow();
   });
 
   it("validates invitation request and response tokens", () => {
