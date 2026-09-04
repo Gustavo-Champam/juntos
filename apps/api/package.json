@@ -8,6 +8,7 @@
     "prebuild": "npm --workspace @juntos/contracts run build",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
+    "db:migrate": "tsx src/db/migrate.ts",
     "pretest": "npm --workspace @juntos/contracts run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -17,10 +18,13 @@
     "@juntos/contracts": "0.1.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.12.1",
+    "pg": "^8.23.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "pg-mem": "^3.0.14",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"

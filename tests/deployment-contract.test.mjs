@@ -34,7 +34,11 @@ test("Render builds the API from the complete npm workspace", () => {
     api.buildCommand,
     "npm ci --include=dev --workspace @juntos/api --workspace @juntos/contracts && npm --workspace @juntos/api run build",
   );
-  assert.equal(api.startCommand, "npm --workspace @juntos/api run start");
+  assert.equal(
+    api.startCommand,
+    "npm --workspace @juntos/api run db:migrate && npm --workspace @juntos/api run start",
+  );
+  assert.equal(api.preDeployCommand, undefined);
   assert.equal(api.healthCheckPath, "/health");
   assert.equal(api.plan, "free");
 });

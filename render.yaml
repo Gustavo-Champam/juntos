@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci --include=dev --workspace @juntos/api --workspace @juntos/contracts && npm --workspace @juntos/api run build
-    startCommand: npm --workspace @juntos/api run start
+    startCommand: npm --workspace @juntos/api run db:migrate && npm --workspace @juntos/api run start
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
@@ -15,6 +15,14 @@ services:
         fromDatabase:
           name: juntos-db
           property: connectionString
+      - key: DATABASE_SSL
+        value: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
       - key: WEB_ORIGIN
         sync: false
       - key: INTERNAL_PROXY_KEY
