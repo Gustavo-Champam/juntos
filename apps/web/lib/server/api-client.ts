@@ -1,16 +1,21 @@
 import "server-only";
+import { cookies } from "next/headers";
 
 import { createBackendClient } from "./api-client-core";
+import { getClientId } from "./auth-cookies";
 
-export function backendFetch(
+export async function backendFetch(
   path: string,
   init?: RequestInit,
+  session?: string,
 ): Promise<Response> {
   const apiBaseUrl = process.env.API_BASE_URL;
+  const proxyKey = process.env.INTERNAL_PROXY_KEY;
 
-  if (!apiBaseUrl) {
-    throw new Error("API_BASE_URL is required");
+  if (!apiBaseUrl || !proxyKey) {
+    throw new Error("Backend configuration is required");
   }
 
-  return createBackendClient({ baseUrl: apiBaseUrl, fetcher: fetch })(path, init);
+  const clientId = getClientId(await cookies());
+  return createBackendClient({ baseUrl: apiBaseUrl, fetcher: fetch, proxyKey, clientId })(path, init, session);
 }
