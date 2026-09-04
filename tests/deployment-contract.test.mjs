@@ -36,6 +36,7 @@ test("Render builds the API from the complete npm workspace", () => {
   );
   assert.equal(api.startCommand, "npm --workspace @juntos/api run start");
   assert.equal(api.healthCheckPath, "/health");
+  assert.equal(api.plan, "free");
 });
 
 test("Render injects PostgreSQL and generated secrets without literal values", () => {
@@ -56,5 +57,6 @@ test("Render injects PostgreSQL and generated secrets without literal values", (
     name: "juntos-db",
     databaseName: "juntos",
     user: "juntos",
+    plan: "free",
   });
 });

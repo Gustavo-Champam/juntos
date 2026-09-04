@@ -77,6 +77,12 @@ Use **New > Blueprint** e selecione este repositório. O `render.yaml` cria:
 Antes da primeira publicação, informe `WEB_ORIGIN` com a origem exata do site
 na Vercel, por exemplo `https://juntos.vercel.app`. Não inclua uma barra final.
 
+O Blueprint começa nos planos gratuitos para não gerar cobrança automática.
+Nesse plano, a API pode levar cerca de um minuto para acordar após 15 minutos
+sem acesso, e o PostgreSQL gratuito expira 30 dias após a criação. Antes de
+guardar dados reais do casal, atualize o banco para um plano persistente com
+backup ou migre os dados para outro PostgreSQL gerenciado.
+
 ## Variáveis de ambiente
 
 | Variável | Onde | Finalidade |
