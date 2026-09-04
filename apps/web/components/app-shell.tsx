@@ -4,7 +4,12 @@ import type { ReactNode } from "react";
 
 import { primaryNavigation } from "@/lib/navigation";
 
-export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
+type AppShellProps = Readonly<{
+  children: ReactNode;
+  currentPath?: string;
+}>;
+
+export function AppShell({ children, currentPath = "/" }: AppShellProps) {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#conteudo-principal">
@@ -43,7 +48,7 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
           <Link
             className="navigation-link"
             href={href}
-            aria-current={href === "/" ? "page" : undefined}
+            aria-current={href === currentPath ? "page" : undefined}
             key={href}
           >
             <Icon size={20} strokeWidth={1.8} aria-hidden="true" />

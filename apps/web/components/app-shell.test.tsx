@@ -42,4 +42,20 @@ describe("AppShell", () => {
       screen.getByRole("button", { name: "Abrir perfil e configurações" }),
     ).toBeInTheDocument();
   });
+
+  it("marks the current product area in the primary navigation", () => {
+    render(
+      <AppShell currentPath="/comidas">
+        <p>Conteúdo</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole("link", { name: "Comidas" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Início" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
 });
