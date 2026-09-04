@@ -1,943 +1,457 @@
 # Juntos Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `executing-plans` to implement this plan task by task. Use `test-driven-development` for every behavior change and `verification-before-completion` before claiming the phase is complete.
 
-**Goal:** Build the mobile-first Juntos application shell and its calm chronological home screen as the first working, testable slice of the approved product.
+**Goal:** Deliver the first working slice of Juntos: a mobile-first monorepo with a Next.js frontend for Vercel, a Fastify API for Render, and the approved calm chronological home screen.
 
-**Architecture:** Scaffold a Vinext/React Site in `juntos-app/`, keep the timeline merge logic as a pure domain module, and compose responsive presentation components around it. This phase uses representative in-app data so the product direction can be reviewed before identity and persistence are connected; the D1 binding is created now so later plans can add durable shared records without replacing the project.
+**Architecture:** Keep `apps/web` and `apps/api` in one npm workspace and place runtime contracts in `packages/contracts`. The browser talks only to same-origin Next.js route handlers. Those handlers call the Render API server-to-server. PostgreSQL will become the shared source of truth in the identity phase; this visual foundation uses deterministic representative data so the product direction can be validated before authentication and persistence are connected.
 
-**Tech Stack:** TypeScript, React, Vinext, Vite, Tailwind CSS, shadcn/ui, Lucide icons, Cloudflare D1 binding, Vitest, Testing Library, Web App Manifest, service worker.
+**Tech Stack:** Node.js 22, npm workspaces, TypeScript, Next.js App Router, React, Tailwind CSS, Lucide icons, Fastify 5, Zod, Vitest, Testing Library, PostgreSQL-ready environment configuration, Vercel, Render.
 
 **Spec:** `docs/superpowers/specs/2026-09-03-agenda-cardapio-casal-design.md`
 
 ## Global Constraints
 
-- The application is private and designed for exactly two members in its initial version.
-- The experience is mobile-first, works on desktop, and can be installed from the browser.
-- The home screen is a single chronological timeline; full tools live in their dedicated areas.
-- Mobile navigation contains exactly Início, Agenda, Comidas, and Compras; account settings live under the avatar.
-- Main body text is at least 16px, recurring control labels are at least 14px, and essential status information is never below 14px.
-- Information must not depend on color alone, keyboard focus must be visible, and reduced-motion preferences must be respected.
-- Shared product data will use D1 in later plans; browser storage is limited to device-local preferences and temporary drafts.
-- Do not store Google credentials, tokens, or other secrets in source control.
+- Frontend deploys to Vercel from `apps/web`; backend and PostgreSQL deploy to Render.
+- Workspace installation happens from the repository root so both deploys can reach `packages/contracts`.
+- The browser calls only same-origin `/api/*` routes; only the Next.js server calls the Render hostname.
+- The initial private space supports exactly two members.
+- The experience is mobile-first, responsive on desktop, and installable from the browser.
+- The home screen is a single chronological timeline. Do not add summary dashboards, side panels, charts, or unrelated cards.
+- Mobile navigation contains exactly `Início`, `Agenda`, `Comidas`, and `Compras`; account settings live under the avatar.
+- Main body text is at least 16px, recurring control labels are at least 14px, keyboard focus is visible, and essential state never depends on color alone.
+- PostgreSQL is the future source of truth. Browser storage is limited to device-local preferences and temporary offline drafts.
+- Never commit Google credentials, database URLs, internal keys, or production secrets.
 
 ## Plan Boundaries
 
-This plan is the first independently testable slice. The remaining approved scope is intentionally split into later plans:
+This phase establishes the deployable product foundation and approved visual language. Later implementation phases complete the product without replacing this base:
 
-1. Google identity, sessions, couple space, and invitations.
-2. Internal agenda and Google Calendar synchronization.
-3. Weekly meals, recipe catalog, favorites, and quick suggestions.
-4. Shopping consolidation, cross-device synchronization, offline writes, and conflict handling.
+1. Google identity, protected sessions, the couple space, invitations, and PostgreSQL persistence.
+2. Internal agenda, recurrence, a separate shared Google Calendar, and synchronization.
+3. Weekly breakfast, lunch, and dinner planning, recipes, favorites, and quick suggestions.
+4. Automatic shopping consolidation, manual items, cross-device updates, offline writes, and conflict handling.
 
-All `npm` commands below run inside `juntos-app/`. All `git` commands run from the repository root.
+All commands below run from the repository root unless a step explicitly says otherwise.
 
 ---
 
-### Task 1: Scaffold the hosted application and lock its contract
+### Task 1: Create the workspace and shared runtime contracts
 
 **Files:**
-- Create: `juntos-app/` using the Sites initializer
-- Modify: `juntos-app/package.json`
-- Modify: `juntos-app/app/layout.tsx`
-- Create: `juntos-app/vitest.config.ts`
-- Create: `juntos-app/tests/setup.ts`
-- Create: `juntos-app/tests/project-contract.test.ts`
-- Inspect: `juntos-app/.openai/hosting.json`
-- Inspect: `juntos-app/vite.config.ts`
-- Inspect: `juntos-app/worker/index.ts`
 
-**Interfaces:**
-- Consumes: the approved design specification and the Sites generator contract.
-- Produces: a buildable project, `npm test`, the logical `DB` binding, and metadata for the Juntos product.
+- Create: `package.json`
+- Create: `.gitignore`
+- Create: `.env.example`
+- Create: `packages/contracts/package.json`
+- Create: `packages/contracts/tsconfig.json`
+- Create: `packages/contracts/src/index.ts`
+- Create: `packages/contracts/src/health.test.ts`
 
-- [ ] **Step 1: Scaffold the project with the required interface and persistence add-ons**
+- [ ] **Step 1: Define the root workspace**
 
-Run from the repository root:
-
-```powershell
-npm create --yes @openai/sites@0.3.0 juntos-app -- --yes --add-ons shadcn,d1 --install
-```
-
-Expected: `juntos-app/package.json`, `juntos-app/app/page.tsx`, `juntos-app/app/layout.tsx`, `juntos-app/app/globals.css`, `juntos-app/worker/index.ts`, and `juntos-app/.openai/hosting.json` exist; the hosting file declares the logical D1 binding.
-
-- [ ] **Step 2: Add the test runtime**
-
-Run:
-
-```powershell
-npm install --save-dev vitest @testing-library/react @testing-library/jest-dom jsdom
-```
-
-Add these scripts to `juntos-app/package.json` without changing the generated build or development scripts:
+Create a private npm workspace with these scripts:
 
 ```json
 {
+  "name": "juntos",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": { "node": ">=22.0.0" },
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "dev:web": "npm --workspace @juntos/web run dev",
+    "dev:api": "npm --workspace @juntos/api run dev",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }
 ```
 
-- [ ] **Step 3: Configure the test environment**
+Ignore dependencies, build output, coverage, local environment files, Vercel state, visual-companion state, and logs. Keep every `.env.example` tracked.
 
-Create `juntos-app/vitest.config.ts`:
+- [ ] **Step 2: Document the local environment contract**
 
-```ts
-import { defineConfig } from "vitest/config";
-import path from "node:path";
+Add placeholders for:
 
-export default defineConfig({
-  resolve: { alias: { "@": path.resolve(__dirname, ".") } },
-  test: {
-    environment: "jsdom",
-    setupFiles: ["./tests/setup.ts"],
-  },
-});
+```dotenv
+API_BASE_URL=http://localhost:4000
+INTERNAL_PROXY_KEY=replace-me
+HOST=0.0.0.0
+PORT=4000
+NODE_ENV=development
+WEB_ORIGIN=http://localhost:3000
+DATABASE_URL=postgresql://user:password@localhost:5432/juntos
 ```
 
-Create `juntos-app/tests/setup.ts`:
+- [ ] **Step 3: Write the failing shared-contract test**
+
+The test must accept only this health payload:
 
 ```ts
-import "@testing-library/jest-dom/vitest";
+{ status: "ok", service: "juntos-api" }
 ```
-
-- [ ] **Step 4: Write the failing project contract test**
-
-Create `juntos-app/tests/project-contract.test.ts`:
-
-```ts
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-
-describe("Juntos project contract", () => {
-  it("keeps the D1 binding and product metadata", () => {
-    const hosting = JSON.parse(readFileSync(".openai/hosting.json", "utf8"));
-    const layout = readFileSync("app/layout.tsx", "utf8");
-
-    expect(hosting.d1).toBeTruthy();
-    expect(layout).toContain("Juntos");
-    expect(layout).toContain("Agenda e cardápio compartilhados");
-  });
-});
-```
-
-- [ ] **Step 5: Run the contract test and confirm the metadata assertion fails**
 
 Run:
 
 ```powershell
-npm test -- tests/project-contract.test.ts
+npm install
+npm --workspace @juntos/contracts test
 ```
 
-Expected: FAIL because the generated layout does not contain the Juntos title and description.
+Expected: the test fails because the schema is not implemented.
 
-- [ ] **Step 6: Replace the starter metadata**
+- [ ] **Step 4: Implement the smallest health contract**
 
-Set the exported metadata in `juntos-app/app/layout.tsx` to:
+Export `healthResponseSchema` and the inferred `HealthResponse` type from `packages/contracts/src/index.ts`.
 
-```ts
-export const metadata = {
-  title: "Juntos",
-  description: "Agenda e cardápio compartilhados para organizar a vida a dois.",
-};
-```
-
-Keep the generated document structure and stylesheet import unchanged.
-
-- [ ] **Step 7: Run the contract test and production build**
-
-Run:
+- [ ] **Step 5: Verify and commit**
 
 ```powershell
-npm test -- tests/project-contract.test.ts
-npm run build
-```
-
-Expected: the contract test passes and the generated worker build completes.
-
-- [ ] **Step 8: Commit the scaffold**
-
-```powershell
-git add juntos-app
-git commit -m "chore: scaffold Juntos site"
+npm --workspace @juntos/contracts test
+npm --workspace @juntos/contracts run typecheck
+git add package.json package-lock.json .gitignore .env.example packages/contracts
+git commit -m "build: create Juntos workspace"
 ```
 
 ---
 
-### Task 2: Implement the chronological timeline domain
+### Task 2: Build the Render-ready Fastify API
 
 **Files:**
-- Create: `juntos-app/features/timeline/types.ts`
-- Create: `juntos-app/features/timeline/build-day-timeline.ts`
-- Create: `juntos-app/features/timeline/build-day-timeline.test.ts`
-- Create: `juntos-app/features/timeline/demo-data.ts`
 
-**Interfaces:**
-- Consumes: `CalendarEvent[]`, `PlannedMeal[]`, and an ISO date string.
-- Produces: `buildDayTimeline(input: BuildDayTimelineInput): TimelineItem[]`, sorted by time and stable by source order for equal times.
+- Create: `apps/api/package.json`
+- Create: `apps/api/tsconfig.json`
+- Create: `apps/api/tsconfig.build.json`
+- Create: `apps/api/src/config.ts`
+- Create: `apps/api/src/app.ts`
+- Create: `apps/api/src/server.ts`
+- Create: `apps/api/src/routes/health.ts`
+- Create: `apps/api/src/routes/health.test.ts`
 
-- [ ] **Step 1: Define the failing timeline behavior**
+- [ ] **Step 1: Create the API package**
 
-Create `juntos-app/features/timeline/build-day-timeline.test.ts`:
+Use Fastify 5, `@fastify/cors`, Zod, dotenv, and `@juntos/contracts`. Add `dev`, `build`, `start`, `test`, and `typecheck` scripts. Production start must execute the compiled server.
 
-```ts
-import { describe, expect, it } from "vitest";
-import { buildDayTimeline } from "./build-day-timeline";
+- [ ] **Step 2: Write the failing route test**
 
-describe("buildDayTimeline", () => {
-  it("merges events and meals in chronological order", () => {
-    const items = buildDayTimeline({
-      date: "2026-09-03",
-      events: [
-        { id: "event-1", title: "Faculdade", date: "2026-09-03", time: "19:00", owner: "couple" },
-      ],
-      meals: [
-        { id: "meal-1", title: "Almoço", recipeName: "Arroz, feijão e frango", date: "2026-09-03", time: "12:30", durationMinutes: 35 },
-        { id: "meal-2", title: "Jantar", recipeName: "Wrap de frango", date: "2026-09-03", time: "21:30", durationMinutes: 20 },
-      ],
-    });
+Use Fastify injection to assert:
 
-    expect(items.map((item) => item.id)).toEqual(["meal-1", "event-1", "meal-2"]);
-    expect(items.map((item) => item.kind)).toEqual(["meal", "event", "meal"]);
-  });
-
-  it("excludes records from another day", () => {
-    const items = buildDayTimeline({
-      date: "2026-09-03",
-      events: [{ id: "event-2", title: "Cinema", date: "2026-09-05", time: "20:00", owner: "couple" }],
-      meals: [],
-    });
-
-    expect(items).toEqual([]);
-  });
-});
-```
-
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- `GET /health` returns `200`.
+- The body satisfies `healthResponseSchema`.
+- The body equals `{ status: "ok", service: "juntos-api" }`.
 
 Run:
 
 ```powershell
-npm test -- features/timeline/build-day-timeline.test.ts
+npm install
+npm --workspace @juntos/api test
 ```
 
-Expected: FAIL because the module and types do not exist.
+Expected: the test fails because the application factory does not exist.
 
-- [ ] **Step 3: Define the timeline types**
+- [ ] **Step 3: Implement validated configuration**
 
-Create `juntos-app/features/timeline/types.ts`:
+Parse `HOST`, `PORT`, `NODE_ENV`, and `WEB_ORIGIN` through Zod. Fail during startup with a readable message when production configuration is invalid.
 
-```ts
-export type CalendarEvent = {
-  id: string;
-  title: string;
-  date: string;
-  time: string;
-  owner: "self" | "partner" | "couple";
-  location?: string;
-};
+- [ ] **Step 4: Implement the application factory and health route**
 
-export type PlannedMeal = {
-  id: string;
-  title: "Café da manhã" | "Almoço" | "Jantar";
-  recipeName: string;
-  date: string;
-  time: string;
-  durationMinutes: number;
-};
+Create `buildApp()` so tests do not bind a TCP port. Enable structured logs and allow CORS only from `WEB_ORIGIN`; do not use wildcard origins.
 
-export type TimelineItem =
-  | ({ kind: "event" } & CalendarEvent)
-  | ({ kind: "meal" } & PlannedMeal);
+- [ ] **Step 5: Implement production startup**
 
-export type BuildDayTimelineInput = {
-  date: string;
-  events: CalendarEvent[];
-  meals: PlannedMeal[];
-};
-```
+Load configuration, listen on the configured host and port, and exit with a non-zero status after a startup failure.
 
-- [ ] **Step 4: Implement the pure merge function**
-
-Create `juntos-app/features/timeline/build-day-timeline.ts`:
-
-```ts
-import type { BuildDayTimelineInput, TimelineItem } from "./types";
-
-export function buildDayTimeline({ date, events, meals }: BuildDayTimelineInput): TimelineItem[] {
-  const eventItems: TimelineItem[] = events
-    .filter((event) => event.date === date)
-    .map((event) => ({ ...event, kind: "event" }));
-  const mealItems: TimelineItem[] = meals
-    .filter((meal) => meal.date === date)
-    .map((meal) => ({ ...meal, kind: "meal" }));
-
-  return [...eventItems, ...mealItems].sort((left, right) => left.time.localeCompare(right.time));
-}
-```
-
-- [ ] **Step 5: Add representative data for the first preview**
-
-Create `juntos-app/features/timeline/demo-data.ts`:
-
-```ts
-import type { CalendarEvent, PlannedMeal } from "./types";
-
-export const demoEvents: CalendarEvent[] = [
-  { id: "work", title: "Trabalho", date: "2026-09-03", time: "09:00", owner: "self" },
-  { id: "college", title: "Faculdade", date: "2026-09-03", time: "19:00", owner: "couple" },
-];
-
-export const demoMeals: PlannedMeal[] = [
-  { id: "lunch", title: "Almoço", recipeName: "Arroz, feijão e frango", date: "2026-09-03", time: "12:30", durationMinutes: 35 },
-  { id: "dinner", title: "Jantar", recipeName: "Wrap de frango", date: "2026-09-03", time: "21:30", durationMinutes: 20 },
-];
-```
-
-- [ ] **Step 6: Run the focused test**
-
-Run:
+- [ ] **Step 6: Verify and commit**
 
 ```powershell
-npm test -- features/timeline/build-day-timeline.test.ts
-```
-
-Expected: both tests pass.
-
-- [ ] **Step 7: Commit the domain slice**
-
-```powershell
-git add juntos-app/features/timeline
-git commit -m "feat: add chronological day timeline"
+npm --workspace @juntos/api test
+npm --workspace @juntos/api run typecheck
+npm --workspace @juntos/api run build
+git add apps/api package.json package-lock.json
+git commit -m "feat: add deployable API health service"
 ```
 
 ---
 
-### Task 3: Build the responsive application shell
+### Task 3: Scaffold the Next.js frontend and its same-origin API boundary
 
 **Files:**
-- Create: `juntos-app/components/juntos/app-shell.tsx`
-- Create: `juntos-app/components/juntos/bottom-nav.tsx`
-- Create: `juntos-app/components/juntos/sidebar-nav.tsx`
-- Create: `juntos-app/components/juntos/navigation.ts`
-- Create: `juntos-app/components/juntos/app-shell.test.tsx`
-- Modify: `juntos-app/app/globals.css`
 
-**Interfaces:**
-- Consumes: `children: ReactNode`, `activeItem: NavigationId`, and `displayName: string`.
-- Produces: `AppShell`, `BottomNav`, and `SidebarNav` with the same four navigation destinations and an account avatar.
+- Create: `apps/web/` with `create-next-app`
+- Modify: `apps/web/package.json`
+- Create: `apps/web/vitest.config.ts`
+- Create: `apps/web/vitest.setup.ts`
+- Create: `apps/web/lib/server/api-client.ts`
+- Create: `apps/web/lib/server/api-client.test.ts`
+- Create: `apps/web/app/api/backend-health/route.ts`
+- Modify: `apps/web/app/layout.tsx`
 
-- [ ] **Step 1: Write the failing navigation contract test**
-
-Create `juntos-app/components/juntos/app-shell.test.tsx`:
-
-```tsx
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { AppShell } from "./app-shell";
-
-describe("AppShell", () => {
-  it("exposes the four product destinations and account access", () => {
-    render(<AppShell activeItem="home" displayName="Gustavo"><p>Conteúdo</p></AppShell>);
-
-    for (const label of ["Início", "Agenda", "Comidas", "Compras"]) {
-      expect(screen.getAllByRole("link", { name: label }).length).toBeGreaterThan(0);
-    }
-    expect(screen.getByRole("button", { name: "Abrir perfil de Gustavo" })).toBeInTheDocument();
-  });
-});
-```
-
-- [ ] **Step 2: Run the focused test and confirm it fails**
-
-Run:
+- [ ] **Step 1: Scaffold without creating a nested lockfile**
 
 ```powershell
-npm test -- components/juntos/app-shell.test.tsx
+npx create-next-app@latest apps/web --yes --typescript --tailwind --eslint --app --no-src-dir --import-alias "@/*" --skip-install
 ```
 
-Expected: FAIL because `AppShell` does not exist.
+Rename the package to `@juntos/web`, declare the `@juntos/contracts` workspace dependency, add Vitest, Testing Library, and jsdom, then run only the root `npm install`.
 
-- [ ] **Step 3: Define the single navigation source**
+- [ ] **Step 2: Configure component tests**
 
-Create `juntos-app/components/juntos/navigation.ts`:
+Create a jsdom Vitest configuration with the `@/` alias and Testing Library cleanup/setup.
 
-```ts
-import { CalendarDays, CookingPot, House, ShoppingBasket } from "lucide-react";
+- [ ] **Step 3: Write the failing server-client tests**
 
-export const navigationItems = [
-  { id: "home", label: "Início", href: "/", icon: House },
-  { id: "calendar", label: "Agenda", href: "/agenda", icon: CalendarDays },
-  { id: "meals", label: "Comidas", href: "/comidas", icon: CookingPot },
-  { id: "shopping", label: "Compras", href: "/compras", icon: ShoppingBasket },
-] as const;
+Assert that the client:
 
-export type NavigationId = (typeof navigationItems)[number]["id"];
-```
+- turns `/health` into `${API_BASE_URL}/health`;
+- requests uncached server data;
+- rejects absolute URLs and paths that do not begin with exactly one slash.
 
-- [ ] **Step 4: Implement mobile and desktop navigation**
+- [ ] **Step 4: Implement the private server client**
 
-Create `juntos-app/components/juntos/bottom-nav.tsx`:
+Mark the module `server-only`, validate the relative path, read `API_BASE_URL` only on the server, and use `cache: "no-store"`. Do not expose `API_BASE_URL` through a `NEXT_PUBLIC_*` variable.
 
-```tsx
-import { navigationItems, type NavigationId } from "./navigation";
+- [ ] **Step 5: Implement the same-origin health route**
 
-export function BottomNav({ activeItem }: { activeItem: NavigationId }) {
-  return (
-    <nav className="juntos-bottom-nav" aria-label="Navegação principal">
-      {navigationItems.map(({ id, label, href, icon: Icon }) => (
-        <a key={id} href={href} aria-current={activeItem === id ? "page" : undefined}>
-          <Icon aria-hidden="true" size={20} strokeWidth={1.8} />
-          <span>{label}</span>
-        </a>
-      ))}
-    </nav>
-  );
-}
-```
+`GET /api/backend-health` calls the backend, validates the body with `healthResponseSchema`, returns the valid payload, and returns a safe `503` response when the backend is unavailable or malformed.
 
-Create `juntos-app/components/juntos/sidebar-nav.tsx`:
+- [ ] **Step 6: Set product metadata and verify**
 
-```tsx
-import { navigationItems, type NavigationId } from "./navigation";
-
-export function SidebarNav({ activeItem }: { activeItem: NavigationId }) {
-  return (
-    <nav className="juntos-sidebar-nav" aria-label="Navegação principal">
-      <a className="juntos-brand" href="/" aria-label="Juntos, página inicial">juntos.</a>
-      <div className="juntos-sidebar-links">
-        {navigationItems.map(({ id, label, href, icon: Icon }) => (
-          <a key={id} href={href} aria-current={activeItem === id ? "page" : undefined}>
-            <Icon aria-hidden="true" size={21} strokeWidth={1.8} />
-            <span>{label}</span>
-          </a>
-        ))}
-      </div>
-    </nav>
-  );
-}
-```
-
-- [ ] **Step 5: Implement the shell**
-
-Create `juntos-app/components/juntos/app-shell.tsx`:
-
-```tsx
-import type { ReactNode } from "react";
-import { BottomNav } from "./bottom-nav";
-import { SidebarNav } from "./sidebar-nav";
-import type { NavigationId } from "./navigation";
-
-export function AppShell({ children, activeItem, displayName }: {
-  children: ReactNode;
-  activeItem: NavigationId;
-  displayName: string;
-}) {
-  return (
-    <div className="juntos-shell">
-      <aside className="juntos-sidebar"><SidebarNav activeItem={activeItem} /></aside>
-      <div className="juntos-stage">
-        <header className="juntos-header">
-          <a className="juntos-brand" href="/" aria-label="Juntos, página inicial">juntos.</a>
-          <button className="juntos-avatar" aria-label={`Abrir perfil de ${displayName}`}>{displayName.slice(0, 1)}</button>
-        </header>
-        <main className="juntos-main">{children}</main>
-        <BottomNav activeItem={activeItem} />
-      </div>
-    </div>
-  );
-}
-```
-
-- [ ] **Step 6: Apply the approved visual thesis through shared tokens**
-
-Replace the generated color and type tokens in `juntos-app/app/globals.css` with a high-contrast editorial system:
-
-```css
-:root {
-  --juntos-bg: #f6f7f9;
-  --juntos-surface: #ffffff;
-  --juntos-ink: #111216;
-  --juntos-muted: #686b73;
-  --juntos-line: #e3e5e9;
-  --juntos-accent: #ff5d52;
-  --juntos-accent-soft: #ffe4e1;
-  --juntos-radius: 1.25rem;
-  --juntos-shadow: 0 1rem 3rem rgb(17 18 22 / 0.08);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --juntos-bg: #0c0d10;
-    --juntos-surface: #15161a;
-    --juntos-ink: #f5f4ef;
-    --juntos-muted: #a7a8ae;
-    --juntos-line: #2a2c31;
-    --juntos-accent-soft: #4a211f;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-```
-
-Add responsive shell rules so `.juntos-sidebar` is hidden below `48rem`, `.juntos-bottom-nav` is hidden at and above `48rem`, and `.juntos-main` never exceeds `52rem`.
-
-- [ ] **Step 7: Run the shell test**
-
-Run:
+Use `Juntos` as the product name and describe it as a shared agenda, meals, and shopping space for two people.
 
 ```powershell
-npm test -- components/juntos/app-shell.test.tsx
-```
-
-Expected: the navigation and profile assertions pass.
-
-- [ ] **Step 8: Commit the shell**
-
-```powershell
-git add juntos-app/components/juntos juntos-app/app/globals.css
-git commit -m "feat: add responsive Juntos shell"
+npm --workspace @juntos/web test
+npm --workspace @juntos/web run typecheck
+npm --workspace @juntos/web run build
+git add apps/web package.json package-lock.json
+git commit -m "feat: add Vercel web application"
 ```
 
 ---
 
-### Task 4: Render the calm home timeline and hand off the first preview
+### Task 4: Implement the chronological timeline domain
 
 **Files:**
-- Create: `juntos-app/features/timeline/timeline-view.tsx`
-- Create: `juntos-app/features/timeline/timeline-view.test.tsx`
-- Create: `juntos-app/components/juntos/juntos-demo.tsx`
-- Modify: `juntos-app/app/page.tsx`
 
-**Interfaces:**
-- Consumes: `TimelineItem[]`, an ISO date, and the responsive shell from Task 3.
-- Produces: a recognizable home route with chronological entries, a date stepper, and one primary add action.
+- Create: `apps/web/features/timeline/types.ts`
+- Create: `apps/web/features/timeline/build-timeline.ts`
+- Create: `apps/web/features/timeline/build-timeline.test.ts`
+- Create: `apps/web/features/timeline/demo-data.ts`
 
-- [ ] **Step 1: Write the failing timeline presentation test**
+- [ ] **Step 1: Write the failing merge tests**
 
-Create `juntos-app/features/timeline/timeline-view.test.tsx`:
+Cover these behaviors:
 
-```tsx
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { TimelineView } from "./timeline-view";
+- agenda events and meals become one list;
+- items are sorted by start time;
+- items from another day are excluded;
+- equal timestamps preserve a deterministic order;
+- each item keeps its source type for presentation and accessibility.
 
-describe("TimelineView", () => {
-  it("shows chronological details without dashboard summary panels", () => {
-    render(<TimelineView date="2026-09-03" items={[
-      { kind: "event", id: "college", title: "Faculdade", date: "2026-09-03", time: "19:00", owner: "couple" },
-      { kind: "meal", id: "dinner", title: "Jantar", recipeName: "Wrap de frango", date: "2026-09-03", time: "21:30", durationMinutes: 20 },
-    ]} />);
+- [ ] **Step 2: Define the minimum domain types**
 
-    expect(screen.getByText("19:00")).toBeInTheDocument();
-    expect(screen.getByText("Faculdade")).toBeInTheDocument();
-    expect(screen.getByText("Wrap de frango")).toBeInTheDocument();
-    expect(screen.queryByText(/resumo/i)).not.toBeInTheDocument();
-  });
-});
-```
+Create `CalendarEvent`, `PlannedMeal`, and the discriminated `TimelineItem` union. Meals support `breakfast`, `lunch`, and `dinner`, plus a `quick` flag.
 
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- [ ] **Step 3: Implement the pure timeline builder**
 
-Run:
+Do not import React, browser APIs, or framework code. Accept an ISO local date and return a new sorted array without mutating the inputs.
+
+- [ ] **Step 4: Add representative product data**
+
+Use a deterministic day containing:
+
+- café da manhã;
+- trabalho or a personal commitment;
+- almoço;
+- a quick dinner before night college;
+- a night-college event.
+
+- [ ] **Step 5: Verify and commit**
 
 ```powershell
-npm test -- features/timeline/timeline-view.test.tsx
+npm --workspace @juntos/web test -- build-timeline
+npm --workspace @juntos/web run typecheck
+git add apps/web/features/timeline
+git commit -m "feat: add chronological timeline domain"
 ```
 
-Expected: FAIL because `TimelineView` does not exist.
+---
 
-- [ ] **Step 3: Implement the timeline presentation**
+### Task 5: Build the calm responsive product shell
 
-Create `juntos-app/features/timeline/timeline-view.tsx`:
+**Files:**
 
-```tsx
-import { CalendarDays, CookingPot, Plus } from "lucide-react";
-import type { TimelineItem } from "./types";
+- Create: `apps/web/components/app-shell.tsx`
+- Create: `apps/web/components/app-shell.test.tsx`
+- Create: `apps/web/components/timeline-view.tsx`
+- Create: `apps/web/components/timeline-view.test.tsx`
+- Create: `apps/web/lib/navigation.ts`
+- Modify: `apps/web/app/page.tsx`
+- Modify: `apps/web/app/globals.css`
 
-function formatDate(date: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  }).format(new Date(`${date}T00:00:00Z`));
-}
+- [ ] **Step 1: Lock the navigation contract in tests**
 
-export function TimelineView({ date, items }: { date: string; items: TimelineItem[] }) {
-  return (
-    <section className="timeline-view" aria-labelledby="day-heading">
-      <header className="day-header">
-        <div>
-          <p className="day-kicker">Nossa quinta</p>
-          <h1 id="day-heading">{formatDate(date)}</h1>
-        </div>
-        <div className="day-actions" aria-label="Navegar entre os dias">
-          <button type="button" aria-label="Dia anterior">←</button>
-          <button type="button">Hoje</button>
-          <button type="button" aria-label="Próximo dia">→</button>
-        </div>
-      </header>
+Assert exact mobile destinations and labels: `Início`, `Agenda`, `Comidas`, `Compras`. Assert that profile/settings is a separate avatar control.
 
-      {items.length === 0 ? (
-        <div className="timeline-empty" role="status">
-          <p>Nada planejado para este dia.</p>
-          <button type="button">Adicionar o primeiro item</button>
-        </div>
-      ) : (
-        <ol className="timeline-list">
-          {items.map((item) => {
-            const isMeal = item.kind === "meal";
-            const Icon = isMeal ? CookingPot : CalendarDays;
-            const title = isMeal ? item.recipeName : item.title;
-            const detail = isMeal
-              ? `${item.title} · ${item.durationMinutes} min`
-              : item.location ?? (item.owner === "couple" ? "Com os dois" : "Compromisso pessoal");
+- [ ] **Step 2: Lock the visual-information contract in tests**
 
-            return (
-              <li className="timeline-row" key={`${item.kind}-${item.id}`}>
-                <time dateTime={`${item.date}T${item.time}`}>{item.time}</time>
-                <div className="timeline-content">
-                  <span className="timeline-kind"><Icon aria-hidden="true" size={15} />{isMeal ? "Refeição" : "Compromisso"}</span>
-                  <h2 className="timeline-title">{title}</h2>
-                  <p>{detail}</p>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
+Render the representative timeline and assert:
 
-      <button className="timeline-add" type="button" aria-label="Adicionar compromisso ou refeição">
-        <Plus aria-hidden="true" size={20} />
-        <span>Adicionar</span>
-      </button>
-    </section>
-  );
-}
+- the selected date and day controls are present;
+- `Faculdade` and the quick dinner appear in chronological order;
+- meal type and quick-preparation state are announced in text;
+- no element labeled `Resumo`, `Dashboard`, or `Visão geral` exists;
+- the primary add action is reachable by an accessible name.
+
+- [ ] **Step 3: Implement the responsive shell**
+
+On phones, render a compact top bar and fixed bottom navigation. On desktop, move the same destinations into a narrow left rail and keep the timeline centered at a comfortable reading width. Do not duplicate navigation landmarks for screen readers.
+
+- [ ] **Step 4: Implement the timeline view**
+
+Render one uninterrupted list grouped only by time. Use small labels and icons to distinguish commitment, breakfast, lunch, and dinner. A `Rápida` label must be visible in addition to any color treatment. Include day navigation, empty state, and one primary add button.
+
+- [ ] **Step 5: Establish the visual system**
+
+Use a warm off-white canvas, near-black typography, subtle olive/sage accents, restrained borders, and one warm highlight for meals. Keep card radii moderate, shadows nearly absent, and animation limited to short state transitions. Respect `prefers-reduced-motion`.
+
+Desktop inspiration may be editorial, but phone layouts must prioritize scan speed and thumb reach. Avoid gradients, glass effects, oversized hero text, decorative charts, and dense dashboard grids.
+
+- [ ] **Step 6: Verify behavior and inspect both breakpoints**
+
+```powershell
+npm --workspace @juntos/web test
+npm --workspace @juntos/web run typecheck
+npm --workspace @juntos/web run build
+npm run dev:web
 ```
 
-- [ ] **Step 4: Compose the representative product slice**
+Inspect at approximately 390×844 and 1440×900. Confirm there is no horizontal overflow, hidden content behind bottom navigation, clipped focus ring, or desktop-only control required on mobile.
 
-Create `juntos-app/components/juntos/juntos-demo.tsx`:
+- [ ] **Step 7: Commit**
 
-```tsx
-"use client";
-
-import { AppShell } from "./app-shell";
-import { buildDayTimeline } from "@/features/timeline/build-day-timeline";
-import { demoEvents, demoMeals } from "@/features/timeline/demo-data";
-import { TimelineView } from "@/features/timeline/timeline-view";
-
-export function JuntosDemo() {
-  const date = "2026-09-03";
-  const items = buildDayTimeline({ date, events: demoEvents, meals: demoMeals });
-
-  return (
-    <AppShell activeItem="home" displayName="Gustavo">
-      <TimelineView date={date} items={items} />
-    </AppShell>
-  );
-}
+```powershell
+git add apps/web
+git commit -m "feat: build calm chronological home"
 ```
 
-Replace `juntos-app/app/page.tsx` with:
+---
 
-```tsx
-import { JuntosDemo } from "@/components/juntos/juntos-demo";
+### Task 6: Add installability and deployment contracts
 
-export default function HomePage() {
-  return <JuntosDemo />;
-}
+**Files:**
+
+- Create: `apps/web/app/manifest.ts`
+- Create: `apps/web/public/sw.js`
+- Create: `apps/web/components/service-worker-register.tsx`
+- Modify: `apps/web/app/layout.tsx`
+- Create: `apps/web/vercel.json`
+- Create: `render.yaml`
+- Create: `tests/deployment-contract.test.mjs`
+- Create: `README.md`
+- Modify: `package.json`
+
+- [ ] **Step 1: Write the failing deployment-contract test**
+
+Parse both deployment files and assert:
+
+- Vercel identifies `apps/web` as the Next.js application;
+- Render builds from the repository root;
+- Render runs only the API workspace build and start scripts;
+- Render checks `/health`;
+- PostgreSQL is declared and supplies `DATABASE_URL`;
+- secrets are referenced or generated, never written as literal production values.
+
+- [ ] **Step 2: Add the Vercel contract**
+
+Keep `apps/web/vercel.json` minimal with the Next.js framework declaration. In `README.md`, record the required project settings:
+
+- Root Directory: `apps/web`;
+- Include source files outside the Root Directory: enabled;
+- workspace packages declared in the root `package.json`;
+- `API_BASE_URL` and `INTERNAL_PROXY_KEY` configured only as Vercel environment variables.
+
+This follows Vercel's monorepo model and keeps `packages/contracts` available during the build.
+
+- [ ] **Step 3: Add the Render Blueprint**
+
+Leave `rootDir` unset so npm can read the root lockfile and shared workspace package. Use scoped commands:
+
+```yaml
+services:
+  - type: web
+    name: juntos-api
+    runtime: node
+    buildCommand: npm ci && npm --workspace @juntos/api run build
+    startCommand: npm --workspace @juntos/api run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: juntos-db
+          property: connectionString
+      - key: WEB_ORIGIN
+        sync: false
+      - key: INTERNAL_PROXY_KEY
+        generateValue: true
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/contracts/**
+        - package.json
+        - package-lock.json
+
+databases:
+  - name: juntos-db
+    databaseName: juntos
+    user: juntos
 ```
 
-- [ ] **Step 5: Style the timeline for calm hierarchy**
+- [ ] **Step 4: Add installability**
 
-In `juntos-app/app/globals.css`, add `.day-header`, `.timeline-list`, and `.timeline-row` rules that satisfy these fixed values:
+Create a manifest with standalone display, theme colors from the visual system, and app icons. Register a conservative service worker that caches only the application shell and static assets in this phase. Never cache authenticated API responses.
 
-```css
-.day-header h1 { font-size: clamp(2.5rem, 9vw, 4.75rem); line-height: 0.98; letter-spacing: -0.055em; }
-.timeline-list { margin-top: 2rem; border-top: 1px solid var(--juntos-line); }
-.timeline-row { display: grid; grid-template-columns: 4.5rem 1fr; gap: 1rem; padding: 1.25rem 0; border-bottom: 1px solid var(--juntos-line); }
-.timeline-title { font-size: 1.125rem; font-weight: 650; }
-```
+- [ ] **Step 5: Document local and production setup**
 
-The primary add button is fixed above the mobile navigation, becomes inline in the date header on desktop, and has the accessible name `Adicionar compromisso ou refeição`.
+Write short, copyable steps for Node 22, root installation, running both applications, environment variables, Vercel project settings, Render Blueprint deployment, and the later Google OAuth callback domains.
 
-- [ ] **Step 6: Run tests and compile the slice**
-
-Run:
+- [ ] **Step 6: Run complete verification**
 
 ```powershell
 npm test
+npm run typecheck
 npm run build
-npm run dev
-```
-
-Expected: tests pass, the build succeeds, and the development server prints a Local URL.
-
-- [ ] **Step 7: Open the first meaningful preview**
-
-Make one request to the exact Local URL to force compilation. Require a non-error response, then open that Local URL in the Codex preview and retain the same preview tab for the rest of the implementation.
-
-Expected: the user sees the Juntos header, the date, one chronological list, the add action, and responsive navigation—not a starter page or loading skeleton.
-
-- [ ] **Step 8: Commit the reviewed slice**
-
-```powershell
-git add juntos-app/app juntos-app/components juntos-app/features
-git commit -m "feat: present the Juntos day timeline"
-```
-
----
-
-### Task 5: Add installability and explicit application states
-
-**Files:**
-- Create: `juntos-app/app/manifest.ts`
-- Create: `juntos-app/public/sw.js`
-- Create: `juntos-app/components/juntos/service-worker-register.tsx`
-- Create: `juntos-app/components/juntos/app-state.tsx`
-- Create: `juntos-app/components/juntos/app-state.test.tsx`
-- Modify: `juntos-app/app/layout.tsx`
-
-**Interfaces:**
-- Consumes: browser service-worker support and one of `loading | empty | offline | error`.
-- Produces: installable metadata, cached application shell assets, and consistent user-facing state components.
-
-- [ ] **Step 1: Write the failing state test**
-
-Create `juntos-app/components/juntos/app-state.test.tsx`:
-
-```tsx
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { AppState } from "./app-state";
-
-describe("AppState", () => {
-  it("offers a recovery action for an error", () => {
-    render(<AppState kind="error" onRetry={() => undefined} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível atualizar agora");
-    expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeInTheDocument();
-  });
-
-  it("announces offline status without presenting it as a failure", () => {
-    render(<AppState kind="offline" />);
-    expect(screen.getByRole("status")).toHaveTextContent("Você está sem internet");
-  });
-});
-```
-
-- [ ] **Step 2: Run the focused test and confirm it fails**
-
-Run:
-
-```powershell
-npm test -- components/juntos/app-state.test.tsx
-```
-
-Expected: FAIL because `AppState` does not exist.
-
-- [ ] **Step 3: Implement the state component**
-
-Create `juntos-app/components/juntos/app-state.tsx`:
-
-```tsx
-const messages = {
-  loading: "Organizando o dia…",
-  empty: "Nada planejado para este dia.",
-  offline: "Você está sem internet. As últimas informações continuam disponíveis.",
-  error: "Não foi possível atualizar agora.",
-} as const;
-
-type AppStateKind = keyof typeof messages;
-
-export function AppState({ kind, onRetry }: { kind: AppStateKind; onRetry?: () => void }) {
-  const isError = kind === "error";
-  return (
-    <section className={`app-state app-state-${kind}`} role={isError ? "alert" : "status"}>
-      <p>{messages[kind]}</p>
-      {isError && onRetry ? <button type="button" onClick={onRetry}>Tentar novamente</button> : null}
-    </section>
-  );
-}
-```
-
-- [ ] **Step 4: Add installable metadata**
-
-Create `juntos-app/app/manifest.ts`:
-
-```ts
-export default function manifest() {
-  return {
-    name: "Juntos",
-    short_name: "Juntos",
-    description: "Agenda e cardápio compartilhados para organizar a vida a dois.",
-    start_url: "/",
-    display: "standalone",
-    background_color: "#f6f7f9",
-    theme_color: "#111216",
-  };
-}
-```
-
-- [ ] **Step 5: Add a bounded service worker**
-
-Create `juntos-app/public/sw.js`:
-
-```js
-const CACHE = "juntos-shell-v1";
-const SHELL = ["/", "/manifest.webmanifest"];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))));
-});
-
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
-});
-```
-
-Create `juntos-app/components/juntos/service-worker-register.tsx`:
-
-```tsx
-"use client";
-
-import { useEffect } from "react";
-
-export function ServiceWorkerRegister() {
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    const register = () => { void navigator.serviceWorker.register("/sw.js"); };
-    window.addEventListener("load", register, { once: true });
-    return () => window.removeEventListener("load", register);
-  }, []);
-  return null;
-}
-```
-
-Import and render `<ServiceWorkerRegister />` once inside the `<body>` in `juntos-app/app/layout.tsx`.
-
-- [ ] **Step 6: Run the state tests and production build**
-
-Run:
-
-```powershell
-npm test -- components/juntos/app-state.test.tsx
-npm run build
-```
-
-Expected: the state tests pass and the build includes the manifest and service worker assets.
-
-- [ ] **Step 7: Commit the installable foundation**
-
-```powershell
-git add juntos-app
-git commit -m "feat: make Juntos installable and resilient"
-```
-
----
-
-### Task 6: Validate the foundation and prepare the identity plan
-
-**Files:**
-- Modify: `juntos-app/README.md`
-- Create: `juntos-app/tests/accessibility-contract.test.ts`
-
-**Interfaces:**
-- Consumes: the completed foundation and its retained preview.
-- Produces: a clean build, documented local workflow, verified accessibility contracts, and a stable base for Google identity work.
-
-- [ ] **Step 1: Write the accessibility contract test**
-
-Create `juntos-app/tests/accessibility-contract.test.ts`:
-
-```ts
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-
-describe("accessibility contract", () => {
-  it("keeps visible focus and reduced motion behavior", () => {
-    const css = readFileSync("app/globals.css", "utf8");
-    expect(css).toContain(":focus-visible");
-    expect(css).toContain("prefers-reduced-motion: reduce");
-  });
-
-  it("labels the primary timeline and add action", () => {
-    const view = readFileSync("features/timeline/timeline-view.tsx", "utf8");
-    expect(view).toContain("aria-labelledby=\"day-heading\"");
-    expect(view).toContain("Adicionar compromisso ou refeição");
-  });
-});
-```
-
-- [ ] **Step 2: Run the test and fix only concrete failures**
-
-Run:
-
-```powershell
-npm test -- tests/accessibility-contract.test.ts
-```
-
-Expected: PASS. If the focus selector is absent, add this exact rule to `app/globals.css`:
-
-```css
-:focus-visible { outline: 3px solid var(--juntos-accent); outline-offset: 3px; }
-```
-
-- [ ] **Step 3: Document the local workflow**
-
-Replace the starter body in `juntos-app/README.md` with these sections and commands:
-
-```markdown
-# Juntos
-
-Agenda e cardápio compartilhados para organizar a vida a dois.
-
-## Desenvolvimento
-
-`npm run dev` inicia a visualização local.
-
-`npm test` executa os testes automatizados.
-
-`npm run build` produz a versão de publicação.
-
-## Dados e identidade
-
-O projeto já reserva o banco D1. Google login, convite do casal e dados compartilhados entram na próxima fase; nenhum segredo deve ser salvo no repositório.
-```
-
-- [ ] **Step 4: Run the full verification set**
-
-Run:
-
-```powershell
-npm test
-npm run build
+git diff --check
 git status --short
 ```
 
-Expected: every test passes, the build succeeds, and only the intended plan-progress or source changes are present.
+Start both applications, verify `GET /health`, verify `/api/backend-health`, and visually recheck the phone and desktop layouts.
 
-- [ ] **Step 5: Commit the verified foundation**
+- [ ] **Step 7: Commit the deployable foundation**
 
 ```powershell
-git add juntos-app
-git commit -m "docs: verify Juntos foundation"
+git add apps/web render.yaml tests README.md package.json package-lock.json
+git commit -m "chore: add Vercel and Render deployment contracts"
 ```
 
-- [ ] **Step 6: Start the next planning boundary**
+---
 
-Create the next implementation plan at `docs/superpowers/plans/2026-09-04-juntos-identity-and-invites.md`. Its fixed scope is Google-only sign-in, secure sessions, a maximum of two members, one-time expiring invitations, server-side authorization, and a credential-configuration gate before live OAuth validation.
+## Phase Completion Gate
+
+The foundation is complete only when:
+
+- every test, typecheck, and production build succeeds from the repository root;
+- the API health endpoint works locally;
+- the Next.js same-origin proxy returns the validated backend health payload;
+- the mobile home shows only the chronological day flow and primary navigation;
+- the desktop view uses the same information hierarchy without becoming a dashboard;
+- the web app exposes an installable manifest and does not cache API data;
+- deployment files match the documented Vercel and Render monorepo settings;
+- no secret is present in tracked files.
+
+After this gate, write the identity-and-invitation implementation plan against this foundation, including PostgreSQL migrations, opaque sessions, Google login, and the two-person membership rule.

@@ -70,6 +70,21 @@ O produto será dividido em unidades independentes:
 
 A interface conversará somente com serviços autenticados do próprio aplicativo. Credenciais e operações do Google Calendar permanecerão no servidor e nunca serão expostas no navegador.
 
+### Implantação e comunicação
+
+O código ficará em um único repositório com dois aplicativos:
+
+- **Frontend `apps/web`:** Next.js e React, publicado na Vercel.
+- **Backend `apps/api`:** Node.js, Fastify e PostgreSQL, publicados no Render.
+
+O navegador chamará rotas do mesmo domínio do frontend. Essas rotas funcionarão como uma camada fina de proteção e encaminharão as solicitações ao backend no Render. A lógica de negócio, a autorização, o acesso ao banco e as integrações externas permanecerão no backend.
+
+Essa camada evita depender de cookies de terceiros entre os domínios da Vercel e do Render. A sessão será representada por um identificador opaco, guardado em cookie `HttpOnly`, `Secure` e `SameSite=Lax` no domínio do frontend. O frontend não terá acesso ao valor da sessão por JavaScript.
+
+O backend usará PostgreSQL com migrações versionadas. Consultas frequentes serão indexadas a partir dos fluxos reais, especialmente por espaço do casal, data e estado de sincronização.
+
+Para manter os aparelhos atualizados sem infraestrutura permanente de conexões, o frontend fará sincronizações incrementais curtas enquanto estiver visível e reduzirá a frequência quando estiver em segundo plano. Toda gravação retorna a nova versão do registro imediatamente; nenhuma atualização manual da página será necessária.
+
 ## Modelo de dados
 
 As entidades principais serão:
@@ -136,6 +151,17 @@ Erros temporários do Google Calendar serão tentados novamente com intervalo cr
 - Proteção contra requisições forjadas, abuso de formulários e entrada de conteúdo malicioso.
 - Registro de ações importantes sem armazenar conteúdo sensível desnecessário.
 - Opção de desconectar o Google Calendar sem apagar os dados internos.
+- Lista explícita de origens confiáveis entre Vercel e Render; o backend não aceitará chamadas de navegadores de origens desconhecidas.
+- Limitação de tentativas nas rotas de autenticação, convite e gravação.
+- Segredos de produção configurados somente nos painéis da Vercel e do Render.
+
+## Login Google entre Vercel e Render
+
+O login começa no frontend. A Vercel cria o estado temporário e redireciona o navegador ao Google. O retorno chega ao frontend, que valida o estado e envia o código de autorização ao backend por uma chamada servidor a servidor. O backend troca o código com o Google, valida a identidade, cria a sessão e devolve um identificador opaco ao frontend. A Vercel grava esse identificador em cookie protegido.
+
+Solicitações posteriores chegam primeiro ao frontend, que lê o cookie no servidor e encaminha o identificador ao Render por cabeçalho interno. O backend valida a sessão e a associação ao espaço do casal antes de acessar qualquer dado. O cliente nunca recebe tokens Google nem credenciais internas.
+
+As permissões do Google Calendar serão solicitadas separadamente do login. Tokens de calendário serão criptografados antes de serem salvos no PostgreSQL.
 
 ## Estados e tratamento de erros
 
@@ -175,11 +201,12 @@ A versão será considerada pronta quando duas contas Google em aparelhos difere
 
 ## Entrega em fases
 
-1. **Base compartilhada:** interface responsiva, login Google, espaço do casal, convite e persistência.
-2. **Agenda:** eventos internos, recorrência, calendário compartilhado e sincronização Google.
-3. **Alimentação:** cardápio semanal, catálogo de receitas, favoritos e sugestões rápidas.
-4. **Compras:** consolidação de ingredientes, itens manuais e sincronização.
-5. **Confiabilidade:** modo offline, conflitos, histórico, acessibilidade e validação completa.
+1. **Base visual:** monorepo, frontend responsivo, backend saudável e linha do tempo com dados representativos.
+2. **Base compartilhada:** login Google, sessão protegida, espaço do casal, convite e persistência.
+3. **Agenda:** eventos internos, recorrência, calendário compartilhado e sincronização Google.
+4. **Alimentação:** cardápio semanal, catálogo de receitas, favoritos e sugestões rápidas.
+5. **Compras:** consolidação de ingredientes, itens manuais e sincronização.
+6. **Confiabilidade:** modo offline, conflitos, histórico, acessibilidade e validação completa.
 
 Cada fase deixará o aplicativo utilizável e será validada antes da seguinte.
 
