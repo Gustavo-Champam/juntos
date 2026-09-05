@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.js";
 import { applyMigrations } from "../db/migration-runner.js";
+import type { Database } from "../db/pool.js";
 import { PostgresIdentityStore } from "./postgres-identity-store.js";
 import { SessionService } from "./session-service.js";
 import { SpaceService } from "../spaces/space-service.js";
+import { hashOpaqueToken } from "../security/tokens.js";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../../migrations", import.meta.url),
@@ -17,6 +19,50 @@ const proxyHeaders = {
   "x-juntos-client-id": "a".repeat(64),
 };
 const apps: Array<ReturnType<typeof buildApp>> = [];
+
+type PersistedHashes = { sessions: Buffer[]; invitations: Buffer[] };
+
+function recordHashWrite(
+  args: unknown[],
+  persisted: PersistedHashes,
+) {
+  const [statement, values] = args;
+  if (typeof statement !== "string" || !Array.isArray(values)) return;
+  const normalized = statement.replace(/\s+/g, " ").trim().toLowerCase();
+  const target = normalized.startsWith("insert into sessions")
+    ? persisted.sessions
+    : normalized.startsWith("insert into invitations")
+      ? persisted.invitations
+      : null;
+  const hashIndex = target === persisted.sessions ? 2 : 4;
+  const hash = target ? values[hashIndex] : undefined;
+  if (target && Buffer.isBuffer(hash)) target.push(Buffer.from(hash));
+}
+
+function recordDatabaseWrites(pool: {
+  query: (...args: unknown[]) => Promise<unknown>;
+  connect: () => Promise<{
+    query: (...args: unknown[]) => Promise<unknown>;
+    release: () => void;
+  }>;
+}, persisted: PersistedHashes): Database {
+  return {
+    query: async (...args: unknown[]) => {
+      recordHashWrite(args, persisted);
+      return Reflect.apply(pool.query, pool, args);
+    },
+    connect: async () => {
+      const client = await pool.connect();
+      return {
+        query: async (...args: unknown[]) => {
+          recordHashWrite(args, persisted);
+          return Reflect.apply(client.query, client, args);
+        },
+        release: () => client.release(),
+      };
+    },
+  } as Database;
+}
 
 function sequenceUuid() {
   let value = 0;
@@ -35,15 +81,21 @@ async function createTestApp() {
   const pool = new adapter.Pool();
   await applyMigrations(pool, migrationsDirectory);
   const nextId = sequenceUuid();
-  const store = new PostgresIdentityStore(pool, { generateId: nextId });
+  const persistedHashes: PersistedHashes = { sessions: [], invitations: [] };
+  const store = new PostgresIdentityStore(
+    recordDatabaseWrites(pool, persistedHashes),
+    { generateId: nextId },
+  );
   let sessionIndex = 0;
   const sessionService = new SessionService(store, {
     generateId: nextId,
     generateToken: () => String.fromCharCode(97 + sessionIndex++).repeat(43),
   });
   let invitationIndex = 0;
+  let clockTick = 0;
   const spaceService = new SpaceService(store, {
     generateToken: () => String.fromCharCode(105 + invitationIndex++).repeat(43),
+    now: () => new Date(Date.UTC(2026, 8, 5, 12, 0, clockTick++)),
   });
   const app = buildApp({
     logger: false,
@@ -63,7 +115,7 @@ async function createTestApp() {
     },
   });
   apps.push(app);
-  return { app, pool };
+  return { app, pool, persistedHashes };
 }
 
 function authenticatedHeaders(token: string) {
@@ -91,7 +143,7 @@ afterEach(async () => {
 
 describe("two-person identity lifecycle", () => {
   it("keeps two verified people in one space, rejects reuse and a third member, then revokes a leaving member session", async () => {
-    const { app, pool } = await createTestApp();
+    const { app, persistedHashes } = await createTestApp();
     const anaToken = await login(app, "ana");
 
     const created = await app.inject({
@@ -147,12 +199,14 @@ describe("two-person identity lifecycle", () => {
       headers: authenticatedHeaders(anaToken),
       payload: {},
     });
+    expect(thirdInvitation.statusCode).toBe(200);
+    const thirdInvitationToken = thirdInvitation.json<{ token: string }>().token;
     const claraToken = await login(app, "clara");
     const thirdMember = await app.inject({
       method: "POST",
       url: "/internal/invitations/accept",
       headers: authenticatedHeaders(claraToken),
-      payload: { token: thirdInvitation.json<{ token: string }>().token },
+      payload: { token: thirdInvitationToken },
     });
     expect(thirdMember.statusCode).toBe(400);
 
@@ -186,17 +240,21 @@ describe("two-person identity lifecycle", () => {
     });
     expect(revoked.statusCode).toBe(401);
 
-    const storedSessions = await pool.query(
-      "SELECT token_hash FROM sessions",
-    ) as { rows: Array<{ token_hash: Buffer }> };
-    const storedInvitations = await pool.query(
-      "SELECT token_hash FROM invitations",
-    ) as { rows: Array<{ token_hash: Buffer }> };
-    expect(storedSessions.rows).toHaveLength(3);
-    expect(storedInvitations.rows).toHaveLength(2);
-    expect(JSON.stringify(storedSessions.rows)).not.toContain(anaToken);
-    expect(JSON.stringify(storedSessions.rows)).not.toContain(biaToken);
-    expect(JSON.stringify(storedInvitations.rows)).not.toContain(invitationToken);
+    expect(persistedHashes.sessions).toHaveLength(3);
+    expect(persistedHashes.invitations).toHaveLength(2);
+
+    for (const [index, token] of [anaToken, biaToken, claraToken].entries()) {
+      const stored = persistedHashes.sessions[index];
+      expect(Buffer.isBuffer(stored)).toBe(true);
+      expect(Buffer.compare(stored!, hashOpaqueToken(token))).toBe(0);
+      expect(Buffer.compare(stored!, Buffer.from(token, "utf8"))).not.toBe(0);
+    }
+    for (const [index, token] of [invitationToken, thirdInvitationToken].entries()) {
+      const stored = persistedHashes.invitations[index];
+      expect(Buffer.isBuffer(stored)).toBe(true);
+      expect(Buffer.compare(stored!, hashOpaqueToken(token))).toBe(0);
+      expect(Buffer.compare(stored!, Buffer.from(token, "utf8"))).not.toBe(0);
+    }
   });
 
   it("promotes the remaining partner to owner when the owner leaves", async () => {
