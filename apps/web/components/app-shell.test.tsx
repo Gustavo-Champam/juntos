@@ -39,8 +39,9 @@ describe("AppShell", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Abrir perfil e configurações" }),
+      screen.getByRole("link", { name: "Abrir perfil e configurações" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Abrir perfil e configurações" })).toHaveAttribute("href", "/perfil");
   });
 
   it("marks the current product area in the primary navigation", () => {

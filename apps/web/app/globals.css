@@ -779,6 +779,121 @@ a:focus-visible {
   text-decoration: line-through;
 }
 
+.identity-page {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.identity-card,
+.invitation-card,
+.leave-section {
+  width: min(100%, 520px);
+  padding: 28px 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.identity-card h1,
+.profile-page > h1 {
+  max-width: 510px;
+  margin: 0;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: clamp(2.3rem, 9vw, 3.6rem);
+  font-weight: 520;
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.identity-card > p:not(.eyebrow):not(.identity-note),
+.identity-note,
+.invitation-card > p,
+.leave-section > p,
+.people-list > p {
+  margin: 15px 0 0;
+  color: var(--muted);
+}
+
+.identity-note { font-size: 13px; }
+
+.identity-form,
+.leave-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 25px;
+}
+
+.identity-form label,
+.leave-form label {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.identity-form input,
+.leave-form input,
+.selectable-link {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.identity-form input:focus,
+.leave-form input:focus,
+.selectable-link:focus { outline: 3px solid color-mix(in srgb, var(--focus) 70%, white); outline-offset: 2px; }
+
+.identity-form [role="alert"],
+.leave-form [role="alert"] { margin: 0; color: var(--clay-deep); font-size: 13px; font-weight: 700; }
+
+.identity-action,
+.danger-button,
+.quiet-button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.identity-action {
+  margin-top: 8px;
+  padding: 0 20px;
+  border: 1px solid var(--sage-deep);
+  background: var(--sage-deep);
+  color: white;
+}
+
+.identity-action:hover { background: #405037; }
+.google-mark { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: white; color: var(--sage-deep); font-family: Arial, sans-serif; font-weight: 800; }
+.identity-action:disabled, .danger-button:disabled { cursor: wait; opacity: 0.62; }
+
+.invitation-card { width: 100%; margin-top: 45px; }
+.invitation-card h2, .leave-section h2, .people-list h2 { margin: 0; font-family: var(--font-newsreader), Georgia, serif; font-size: 1.65rem; font-weight: 590; letter-spacing: -0.025em; }
+.invitation-actions { display: grid; gap: 11px; margin-top: 18px; }
+.invitation-actions p { margin: 0; color: var(--muted); font-size: 13px; }
+.quiet-button { width: fit-content; padding: 0 14px; border: 1px solid var(--line-strong); background: transparent; color: var(--sage-deep); }
+.selectable-link { font-size: 12px; }
+.profile-page { width: min(100%, 760px); min-height: 100svh; margin: 0 auto; padding: 76px 54px 110px; }
+.people-list { margin-top: 35px; padding: 22px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.people-list article { display: flex; align-items: center; gap: 12px; margin-top: 17px; }
+.person-avatar { width: 42px; height: 42px; display: grid; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: 50%; background: var(--sage-soft); color: var(--sage-deep); font-weight: 800; }
+.person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.people-list article div { display: grid; min-width: 0; }
+.people-list article span { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.people-list article small { margin-left: auto; color: var(--sage-deep); font-weight: 800; }
+.leave-section { width: 100%; margin-top: 45px; }
+.danger-button { margin-top: 8px; width: fit-content; padding: 0 16px; border: 1px solid var(--clay-deep); background: transparent; color: var(--clay-deep); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 @media (max-width: 820px) {
   .app-shell {
     display: block;
@@ -875,6 +990,10 @@ a:focus-visible {
     min-height: auto;
     padding: 30px 18px 140px;
   }
+
+  .identity-page { place-items: start center; padding: 34px 18px; }
+  .identity-card { padding: 23px 0; }
+  .profile-page { min-height: auto; padding: 31px 18px 120px; }
 
   .collection-view {
     min-height: auto;

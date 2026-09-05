@@ -1,15 +1,18 @@
 import { Heart, Settings2 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { CoupleSpace, PublicUser } from "@juntos/contracts";
 
 import { primaryNavigation } from "@/lib/navigation";
 
 type AppShellProps = Readonly<{
   children: ReactNode;
   currentPath?: string;
+  user?: PublicUser;
+  space?: CoupleSpace;
 }>;
 
-export function AppShell({ children, currentPath = "/" }: AppShellProps) {
+export function AppShell({ children, currentPath = "/", user, space }: AppShellProps) {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#conteudo-principal">
@@ -26,21 +29,21 @@ export function AppShell({ children, currentPath = "/" }: AppShellProps) {
           <span className="brand-word">Juntos</span>
         </Link>
 
-        <button
+        <Link
           className="profile-button"
-          type="button"
+          href="/perfil"
           aria-label="Abrir perfil e configurações"
         >
           <span className="profile-pair" aria-hidden="true">
-            <span>G</span>
-            <span>A</span>
+            <span>{user?.name.slice(0, 1) ?? "J"}</span>
+            <span>{space?.memberCount === 2 ? "2" : "+"}</span>
           </span>
           <span className="profile-copy">
-            <strong>Nós dois</strong>
-            <small>Perfil e ajustes</small>
+            <strong>{user?.name ?? "Seu espaço"}</strong>
+            <small>{space?.name ?? "Perfil e ajustes"}</small>
           </span>
           <Settings2 className="profile-settings-icon" size={17} aria-hidden="true" />
-        </button>
+        </Link>
       </header>
 
       <nav className="primary-navigation" aria-label="Navegação principal">
