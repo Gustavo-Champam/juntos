@@ -20,4 +20,30 @@ describe("AcceptInvitation", () => {
     await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/invitations/accept", expect.objectContaining({ method: "POST" })));
     expect(replace).toHaveBeenCalledWith("/");
   });
+
+  it("sends an anonymous visitor to the allowlisted OAuth resume path after preservation", async () => {
+    window.history.replaceState(null, "", "/convite#token=" + "a".repeat(43));
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+    const startLogin = vi.fn();
+    render(<AcceptInvitation fetcher={fetcher} startLogin={startLogin} />);
+
+    await screen.findByRole("button", { name: "Entrar no espaço" });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar no espaço" }));
+
+    await waitFor(() => expect(startLogin).toHaveBeenCalledWith("/api/auth/google/start?returnTo=%2Fconvite%3Fretomar%3D1"));
+  });
+
+  it("accepts a resumed invitation without putting its token back in the URL", async () => {
+    window.history.replaceState(null, "", "/convite?retomar=1");
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    render(<AcceptInvitation fetcher={fetcher} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entrar no espaço" }));
+
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/invitations/accept", { method: "POST" }));
+    expect(replace).toHaveBeenCalledWith("/");
+    expect(window.location.href).not.toContain("token=");
+  });
 });

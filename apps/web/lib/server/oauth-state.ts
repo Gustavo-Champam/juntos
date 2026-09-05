@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { clearCookie, cookieConfig, opaqueTokenPattern, type CookieStore } from "./auth-cookies";
 
-type OAuthAttempt = { state: string; nonce: string; codeVerifier: string; issuedAt: number };
+type OAuthAttempt = { state: string; nonce: string; codeVerifier: string; issuedAt: number; returnTo: "/" | "/convite?retomar=1" };
 type ConstantTimeCompare = typeof timingSafeEqual;
 
 function signature(payload: string, key: string) {
@@ -11,12 +11,13 @@ function signature(payload: string, key: string) {
   return createHmac("sha256", signingKey).update(payload).digest();
 }
 
-export function createOAuthAttempt(store: CookieStore, key: string, now = Date.now()) {
+export function createOAuthAttempt(store: CookieStore, key: string, now = Date.now(), returnTo: OAuthAttempt["returnTo"] = "/") {
   const attempt: OAuthAttempt = {
     state: randomBytes(32).toString("base64url"),
     nonce: randomBytes(32).toString("base64url"),
     codeVerifier: randomBytes(32).toString("base64url"),
     issuedAt: now,
+    returnTo,
   };
   const payload = Buffer.from(JSON.stringify(attempt)).toString("base64url");
   store.set({ ...cookieConfig("oauth"), value: `${payload}.${signature(payload, key).toString("base64url")}` });
@@ -34,6 +35,7 @@ export function validateOAuthCallback(store: CookieStore, state: string | null, 
   if (!timingSafeEqual(signature(payload, key), Buffer.from(mac, "base64url"))) throw new Error("Invalid OAuth attempt");
   const attempt: OAuthAttempt = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
   if (!attempt || ![attempt.state, attempt.nonce, attempt.codeVerifier].every((value) => typeof value === "string" && opaqueTokenPattern.test(value)) ||
+      !["/", "/convite?retomar=1"].includes(attempt.returnTo) ||
       !Number.isSafeInteger(attempt.issuedAt) || now < attempt.issuedAt || now - attempt.issuedAt >= 600_000 ||
       !compare(Buffer.from(state), Buffer.from(attempt.state))) throw new Error("Invalid OAuth attempt");
   return attempt;

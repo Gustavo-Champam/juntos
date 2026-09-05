@@ -24,12 +24,23 @@ describe("CreateSpaceForm", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
   });
 
-  it("shows a server error alongside the name field", async () => {
-    render(<CreateSpaceForm fetcher={vi.fn(async () => new Response(JSON.stringify({ error: "Nome indisponível" }), { status: 400 }))} />);
+  it("maps a generic BFF failure to a friendly error alongside the name field", async () => {
+    render(<CreateSpaceForm fetcher={vi.fn(async () => new Response(JSON.stringify({ error: "request_failed" }), { status: 400 }))} />);
 
     fireEvent.change(screen.getByLabelText("Nome do espaço"), { target: { value: "Nosso lugar" } });
     fireEvent.click(screen.getByRole("button", { name: "Criar espaço" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Nome indisponível");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível criar o espaço. Tente novamente.");
+  });
+
+  it("does not submit a space name beyond the contract limit", () => {
+    const fetcher = vi.fn();
+    render(<CreateSpaceForm fetcher={fetcher} />);
+
+    fireEvent.change(screen.getByLabelText("Nome do espaço"), { target: { value: "a".repeat(81) } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar espaço" }));
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Use até 80 caracteres");
   });
 });

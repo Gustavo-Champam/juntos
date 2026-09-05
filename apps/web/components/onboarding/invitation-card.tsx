@@ -11,27 +11,34 @@ export function InvitationCard({ memberCount = 1, fetcher = fetch, clipboard = t
   const [email, setEmail] = useState("");
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
   const [showLink, setShowLink] = useState(false);
-  const invitationUrl = invitation ? `/convite#token=${invitation.token}` : "";
+  const invitationUrl = invitation ? new URL(`/convite#token=${invitation.token}`, typeof window === "undefined" ? "http://localhost" : window.location.origin).href : "";
 
   async function generate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
     setPending(true);
-    setMessage("");
+    setStatus("");
+    setError("");
     setShowLink(false);
     try {
+      const invitedEmail = email.trim().toLowerCase();
+      if (invitedEmail && (invitedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invitedEmail))) {
+        setError("Digite um e-mail válido com até 254 caracteres.");
+        return;
+      }
       const response = await fetcher("/api/invitations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(email.trim() ? { invitedEmail: email.trim() } : {}),
+        body: JSON.stringify(invitedEmail ? { invitedEmail } : {}),
       });
       if (!response.ok) throw new Error();
       setInvitation(await response.json() as Invitation);
-      setMessage("Convite criado.");
+      setStatus("Convite criado.");
     } catch {
-      setMessage("Não foi possível criar o convite. Tente novamente.");
+      setError("Não foi possível criar o convite. Tente novamente.");
     } finally {
       setPending(false);
     }
@@ -41,10 +48,10 @@ export function InvitationCard({ memberCount = 1, fetcher = fetch, clipboard = t
     try {
       if (!clipboard) throw new Error();
       await clipboard.writeText(invitationUrl);
-      setMessage("Convite copiado.");
+      setStatus("Convite copiado.");
     } catch {
       setShowLink(true);
-      setMessage("Não foi possível copiar. Selecione o link abaixo.");
+      setError("Não foi possível copiar. Selecione o link abaixo.");
     }
   }
 
@@ -56,11 +63,12 @@ export function InvitationCard({ memberCount = 1, fetcher = fetch, clipboard = t
       <h2 id="invite-title">Um convite, quando fizer sentido.</h2>
       <form className="identity-form" onSubmit={generate} noValidate>
         <label htmlFor="invited-email">E-mail da pessoa (opcional)</label>
-        <input id="invited-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+        <input id="invited-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" aria-invalid={Boolean(error)} aria-describedby={error ? "invitation-error" : undefined} />
         <button className="identity-action" type="submit" disabled={pending}>{pending ? "Gerando convite…" : invitation ? "Gerar novo convite" : "Gerar convite"}</button>
       </form>
       {invitation ? <div className="invitation-actions"><p>Expira em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(invitation.expiresAt))}.</p><button className="quiet-button" type="button" onClick={copy}><Copy size={17} aria-hidden="true" /> Copiar convite</button>{showLink ? <input className="selectable-link" aria-label="Link do convite" value={invitationUrl} readOnly onFocus={(event) => event.currentTarget.select()} /> : null}</div> : null}
-      <p aria-live="polite">{message}</p>
+      {error ? <p id="invitation-error" role="alert">{error}</p> : null}
+      <p aria-live="polite">{status}</p>
     </section>
   );
 }

@@ -5,17 +5,18 @@ import { useRouter } from "next/navigation";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-export function AcceptInvitation({ fetcher = fetch }: Readonly<{ fetcher?: Fetcher }>) {
+export function AcceptInvitation({ fetcher = fetch, startLogin = (url: string) => window.location.assign(url) }: Readonly<{ fetcher?: Fetcher; startLogin?: (url: string) => void }>) {
   const router = useRouter();
   const [state, setState] = useState<"preparing" | "ready" | "accepting" | "error">("preparing");
 
   useEffect(() => {
     const token = new URLSearchParams(window.location.hash.slice(1)).get("token");
-    window.history.replaceState(null, "", window.location.pathname);
+    const resumed = new URLSearchParams(window.location.search).get("retomar") === "1";
     if (!token) {
-      void Promise.resolve().then(() => setState("error"));
+      void Promise.resolve().then(() => setState(resumed ? "ready" : "error"));
       return;
     }
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
     void fetcher("/api/invitations/preserve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) })
       .then((response) => setState(response.ok ? "ready" : "error"))
       .catch(() => setState("error"));
@@ -26,6 +27,10 @@ export function AcceptInvitation({ fetcher = fetch }: Readonly<{ fetcher?: Fetch
     setState("accepting");
     try {
       const response = await fetcher("/api/invitations/accept", { method: "POST" });
+      if (response.status === 401) {
+        startLogin("/api/auth/google/start?returnTo=%2Fconvite%3Fretomar%3D1");
+        return;
+      }
       if (!response.ok) throw new Error();
       router.replace("/");
     } catch {

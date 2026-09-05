@@ -16,7 +16,7 @@ describe("InvitationCard", () => {
     expect(fetcher).toHaveBeenCalledWith("/api/invitations", expect.objectContaining({ body: JSON.stringify({ invitedEmail: "par@exemplo.com" }) }));
     expect(screen.getByText(/expira em/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Copiar convite" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(new URL(`/convite#token=${"a".repeat(43)}`, window.location.origin).href));
     fireEvent.click(screen.getByRole("button", { name: "Gerar novo convite" }));
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
@@ -35,6 +35,25 @@ describe("InvitationCard", () => {
     await screen.findByRole("button", { name: "Copiar convite" });
     fireEvent.click(screen.getByRole("button", { name: "Copiar convite" }));
 
-    expect(await screen.findByLabelText("Link do convite")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Link do convite")).toHaveValue(new URL(`/convite#token=${"a".repeat(43)}`, window.location.origin).href);
+  });
+
+  it("shows a friendly alert instead of a generic BFF error", async () => {
+    render(<InvitationCard fetcher={vi.fn(async () => new Response(JSON.stringify({ error: "request_failed" }), { status: 502 }))} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Gerar convite" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível criar o convite. Tente novamente.");
+  });
+
+  it("does not submit an email outside the supported bounds", () => {
+    const fetcher = vi.fn();
+    render(<InvitationCard fetcher={fetcher} />);
+
+    fireEvent.change(screen.getByLabelText("E-mail da pessoa (opcional)"), { target: { value: `${"a".repeat(245)}@example.com` } });
+    fireEvent.click(screen.getByRole("button", { name: "Gerar convite" }));
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 });

@@ -29,6 +29,10 @@ function seeOther(url: string | URL) {
   return new Response(null, { status: 303, headers: { ...privateHeaders, Location: String(url) } });
 }
 
+function safeReturnPath(value: string | null): "/" | "/convite?retomar=1" {
+  return value === "/convite?retomar=1" ? value : "/";
+}
+
 function sessionFrom(store: CookieStore) {
   const session = store.get(cookieConfig("session").name)?.value;
   if (!session || !opaqueTokenPattern.test(session)) throw new RequestFailure(401);
@@ -62,7 +66,7 @@ export async function startGoogle(request: Request) {
     const redirect = new URL(redirectUri);
     if (redirect.origin !== new URL(request.url).origin || redirect.pathname !== "/api/auth/google/callback" || redirect.search || redirect.hash) throw new RequestFailure(503);
     const store = await cookies();
-    const attempt = createOAuthAttempt(store, key);
+    const attempt = createOAuthAttempt(store, key, Date.now(), safeReturnPath(new URL(request.url).searchParams.get("returnTo")));
     getClientId(store);
     const destination = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     destination.search = new URLSearchParams({
@@ -98,7 +102,7 @@ export async function googleCallback(request: Request) {
     if (!response.ok) throw new RequestFailure(response.status >= 400 && response.status < 500 ? 400 : 502);
     const payload = googleExchangeResponseSchema.parse(await response.json());
     setSessionCookie(store, payload.sessionToken);
-    return seeOther(new URL("/", request.url));
+    return seeOther(new URL(attempt.returnTo, request.url));
   } catch (error) { return failure(error); }
 }
 
@@ -137,10 +141,10 @@ export async function acceptInvitation(request: Request) {
   try {
     assertSameOrigin(request);
     const store = await cookies();
-    const token = store.get(cookieConfig("invitation").name)?.value;
-    clearCookie(store, "invitation");
     const session = sessionFrom(store);
+    const token = store.get(cookieConfig("invitation").name)?.value;
     if (!token || !opaqueTokenPattern.test(token)) throw new RequestFailure(400);
+    clearCookie(store, "invitation");
     return await proxy("/internal/invitations/accept", session, "POST", { token }, bootstrapSchema);
   } catch (error) { return failure(error); }
 }

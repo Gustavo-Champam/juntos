@@ -19,6 +19,10 @@ export function CreateSpaceForm({ fetcher = fetch }: Readonly<{ fetcher?: Fetche
       setError("Dê um nome para o espaço de vocês.");
       return;
     }
+    if (normalizedName.length > 80) {
+      setError("Use até 80 caracteres para o nome do espaço.");
+      return;
+    }
     setPending(true);
     setError("");
     try {
@@ -28,8 +32,8 @@ export function CreateSpaceForm({ fetcher = fetch }: Readonly<{ fetcher?: Fetche
         body: JSON.stringify({ name: normalizedName }),
       });
       if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: string } | null;
-        setError(body?.error ?? "Não foi possível criar o espaço. Tente novamente.");
+        await response.json().catch(() => null);
+        setError("Não foi possível criar o espaço. Tente novamente.");
         return;
       }
       router.replace("/");

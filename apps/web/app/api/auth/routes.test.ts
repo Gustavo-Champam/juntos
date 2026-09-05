@@ -75,6 +75,27 @@ describe("OAuth routes", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps an allowlisted invitation return path inside the signed OAuth attempt", async () => {
+    const begin = await start(new Request(`${origin}/api/auth/google/start?returnTo=${encodeURIComponent("/convite?retomar=1")}`));
+    const state = new URL(begin.headers.get("location")!).searchParams.get("state")!;
+    fetcher.mockResolvedValue(Response.json({ ...data, sessionToken: session }));
+
+    const finish = await callback(new Request(`${origin}/api/auth/google/callback?code=google-code&state=${state}`));
+
+    expect(finish.headers.get("location")).toBe(`${origin}/convite?retomar=1`);
+    expect(jar.get("oauth")).toBeUndefined();
+  });
+
+  it("defaults an unsafe OAuth return path to the home route", async () => {
+    const begin = await start(new Request(`${origin}/api/auth/google/start?returnTo=https://evil.example`));
+    const state = new URL(begin.headers.get("location")!).searchParams.get("state")!;
+    fetcher.mockResolvedValue(Response.json({ ...data, sessionToken: session }));
+
+    const finish = await callback(new Request(`${origin}/api/auth/google/callback?code=google-code&state=${state}`));
+
+    expect(finish.headers.get("location")).toBe(`${origin}/`);
+  });
+
   it.each(["error", "missing-code", "mismatch", "expired"])("fails %s safely and clears OAuth", async (failure) => {
     const attempt = createOAuthAttempt(jar, key, failure === "expired" ? Date.now() - 600001 : Date.now());
     const query = new URLSearchParams({ state: failure === "mismatch" ? "x".repeat(43) : attempt.state });
@@ -158,6 +179,32 @@ describe("private routes", () => {
     const result = await accept(request("/api/invitations/accept"));
     expect(result.status).toBe(400);
     expect(await result.json()).toEqual({ error: "request_failed" });
+    expect(jar.get("invitation")).toBeUndefined();
+  });
+
+  it("retains a pending invitation when an anonymous visitor must authenticate first", async () => {
+    jar = cookieJar({ invitation: token, client: "c".repeat(43) });
+
+    const result = await accept(request("/api/invitations/accept"));
+
+    expect(result.status).toBe(401);
+    expect(jar.get("invitation")?.value).toBe(token);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("completes preserve, Google resume, and one invitation acceptance for a new visitor", async () => {
+    jar = cookieJar();
+    expect((await preserve(request("/api/invitations/preserve", { token }))).status).toBe(204);
+    expect((await accept(request("/api/invitations/accept"))).status).toBe(401);
+    expect(jar.get("invitation")?.value).toBe(token);
+
+    const begin = await start(new Request(`${origin}/api/auth/google/start?returnTo=%2Fconvite%3Fretomar%3D1`));
+    const state = new URL(begin.headers.get("location")!).searchParams.get("state")!;
+    fetcher.mockResolvedValueOnce(Response.json({ ...data, sessionToken: session })).mockResolvedValueOnce(Response.json(data));
+    expect((await callback(new Request(`${origin}/api/auth/google/callback?code=google-code&state=${state}`))).headers.get("location")).toBe(`${origin}/convite?retomar=1`);
+
+    expect((await accept(request("/api/invitations/accept"))).ok).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(jar.get("invitation")).toBeUndefined();
   });
 
