@@ -4,10 +4,9 @@ Juntos é um espaço compartilhado para duas pessoas organizarem compromissos,
 refeições e compras. A interface é pensada primeiro para celular e mantém o dia
 em uma única linha do tempo, sem painéis extras.
 
-Este repositório contém a fundação executável do produto: o frontend Next.js,
-a API Fastify, contratos compartilhados, instalação como aplicativo e os
-arquivos de publicação. Os dados exibidos nesta fase são representativos; login
-Google, persistência e sincronização entram nas próximas fases.
+Este repositório contém o frontend Next.js, a API Fastify, contratos
+compartilhados, login Google, sessões privadas, espaço do casal e convite de
+uso único. Agenda, refeições e compras serão as próximas fases persistidas.
 
 ## Requisitos
 
@@ -32,16 +31,17 @@ Google, persistência e sincronização entram nas próximas fases.
    npm run dev:api
    ```
 
-4. Em outro terminal, disponibilize `API_BASE_URL=http://localhost:4000` para o
-   processo e inicie o site:
+4. Em outro terminal, inicie o site:
 
    ```bash
    npm run dev:web
    ```
 
 O site abre em `http://localhost:3000` e a API em `http://localhost:4000`.
-O navegador conversa com a API somente pela rota interna
-`/api/backend-health`; o endereço do Render nunca precisa ser público.
+Cadastre no Google Cloud o callback local
+`http://localhost:3000/api/auth/google/callback` antes de testar o login. O
+navegador chama apenas as rotas `/api/*` do próprio site; o endereço do Render
+e os segredos nunca entram no JavaScript do navegador.
 
 ## Verificação
 
@@ -59,7 +59,9 @@ Crie o projeto a partir deste repositório e configure:
 - **Include source files outside of the Root Directory:** ativado
 - **Framework Preset:** Next.js
 - **API_BASE_URL:** URL pública da API no Render, sem barra final
-- **INTERNAL_PROXY_KEY:** segredo compartilhado, somente no ambiente da Vercel
+- **INTERNAL_PROXY_KEY:** o mesmo segredo forte que será informado no Render
+- **GOOGLE_CLIENT_ID:** ID do cliente OAuth Web do Google
+- **GOOGLE_REDIRECT_URI:** `https://<dominio-vercel>/api/auth/google/callback`
 
 A instalação deve usar o `package-lock.json` e os workspaces declarados no
 `package.json` da raiz, pois o frontend também consome `packages/contracts`.
@@ -71,11 +73,16 @@ Use **New > Blueprint** e selecione este repositório. O `render.yaml` cria:
 - o serviço Node `juntos-api`;
 - o banco PostgreSQL `juntos-db`;
 - a ligação segura de `DATABASE_URL`;
-- uma chave interna gerada pelo Render;
 - a verificação de saúde em `/health`.
 
-Antes da primeira publicação, informe `WEB_ORIGIN` com a origem exata do site
-na Vercel, por exemplo `https://juntos.vercel.app`. Não inclua uma barra final.
+Antes da primeira publicação, preencha no Render os valores secretos:
+`INTERNAL_PROXY_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`GOOGLE_REDIRECT_URI` e `WEB_ORIGIN`. O `INTERNAL_PROXY_KEY` deve ser
+exatamente o mesmo configurado na Vercel. Informe `WEB_ORIGIN` com a origem
+exata do site, por exemplo `https://juntos.vercel.app`, sem barra final.
+
+O comando de início aplica migrações idempotentes antes de iniciar a API. Isso
+é necessário porque o plano Free do Render não oferece comando de pré-publicação.
 
 O Blueprint começa nos planos gratuitos para não gerar cobrança automática.
 Nesse plano, a API pode levar cerca de um minuto para acordar após 15 minutos
@@ -89,6 +96,9 @@ backup ou migre os dados para outro PostgreSQL gerenciado.
 | --- | --- | --- |
 | `API_BASE_URL` | Vercel | Endereço privado usado pelo servidor Next.js para chamar a API |
 | `INTERNAL_PROXY_KEY` | Vercel e Render | Segredo reservado para autenticar o proxy interno |
+| `GOOGLE_CLIENT_ID` | Vercel e Render | Identificador público do mesmo cliente OAuth Web |
+| `GOOGLE_CLIENT_SECRET` | Render | Segredo OAuth; nunca vai para a Vercel ou Git |
+| `GOOGLE_REDIRECT_URI` | Vercel e Render | Callback exato do login, igual nos dois serviços |
 | `WEB_ORIGIN` | Render | Origem exata permitida pelo CORS |
 | `DATABASE_URL` | Render | Injetada automaticamente pelo banco do Blueprint |
 | `HOST` e `PORT` | local/Render | Interface e porta usadas pela API |
@@ -96,14 +106,30 @@ backup ou migre os dados para outro PostgreSQL gerenciado.
 
 Nunca use o prefixo `NEXT_PUBLIC_` em segredos ou no endereço interno da API.
 
-## Preparação do login Google
+## Configurar e aceitar com Google
 
-Quando a fase de identidade for implementada, registre no Google Cloud todas as
-origens e callbacks usados pelo produto:
+Crie um cliente OAuth do tipo **Aplicativo da Web** no Google Cloud. Registre a
+origem local e a de produção, e estes callbacks exatos:
 
-- desenvolvimento: `http://localhost:3000`;
-- produção: o domínio definitivo da Vercel;
-- previews: apenas se forem necessários, com uma política de callback específica.
+```text
+http://localhost:3000/api/auth/google/callback
+https://<dominio-vercel>/api/auth/google/callback
+```
 
-As credenciais do Google serão variáveis de ambiente; elas não devem ser
-adicionadas ao Git ou copiadas para o frontend.
+Não adicione credenciais ao Git ou a variáveis `NEXT_PUBLIC_*`. O login pede
+somente `openid email profile`; nenhuma permissão de Google Calendar aparece
+nesta etapa.
+
+### Aceitação real em dois aparelhos
+
+Depois de configurar as variáveis e publicar as duas partes, faça esta checagem
+manual com duas contas Google diferentes:
+
+1. No primeiro aparelho, entre, crie o espaço e gere o convite.
+2. Abra o link no segundo aparelho, entre com a segunda conta e aceite uma vez.
+3. Recarregue os dois aparelhos: ambos devem mostrar o mesmo espaço.
+4. Tente abrir o mesmo convite novamente: ele deve falhar sem adicionar outra pessoa.
+
+Os testes automatizados cobrem esse ciclo com identidades falsas. Esta checagem
+manual continua necessária até que credenciais OAuth reais e os dois aparelhos
+estejam disponíveis.

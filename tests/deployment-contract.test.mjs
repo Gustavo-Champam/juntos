@@ -43,24 +43,38 @@ test("Render builds the API from the complete npm workspace", () => {
   assert.equal(api.plan, "free");
 });
 
-test("Render injects PostgreSQL and generated secrets without literal values", () => {
+test("Render injects PostgreSQL without tracking its connection value", () => {
   const blueprint = readYaml("render.yaml");
   const api = blueprint.services.find((service) => service.name === "juntos-api");
   const databaseUrl = api.envVars.find((variable) => variable.key === "DATABASE_URL");
-  const internalKey = api.envVars.find(
-    (variable) => variable.key === "INTERNAL_PROXY_KEY",
-  );
-
   assert.deepEqual(databaseUrl.fromDatabase, {
     name: "juntos-db",
     property: "connectionString",
   });
-  assert.equal(internalKey.generateValue, true);
-  assert.equal("value" in internalKey, false);
   assert.deepEqual(blueprint.databases[0], {
     name: "juntos-db",
     databaseName: "juntos",
     user: "juntos",
     plan: "free",
   });
+});
+
+test("Render requires manually configured identity values so Vercel and Render can share the proxy key", () => {
+  const blueprint = readYaml("render.yaml");
+  const api = blueprint.services.find((service) => service.name === "juntos-api");
+  const variables = new Map(api.envVars.map((variable) => [variable.key, variable]));
+
+  for (const key of [
+    "INTERNAL_PROXY_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REDIRECT_URI",
+    "WEB_ORIGIN",
+  ]) {
+    const variable = variables.get(key);
+    assert.ok(variable, `${key} must be present`);
+    assert.equal(variable.sync, false, `${key} must be configured outside the repository`);
+    assert.equal("value" in variable, false, `${key} must not be tracked`);
+    assert.equal("generateValue" in variable, false, `${key} must not diverge from Vercel`);
+  }
 });
