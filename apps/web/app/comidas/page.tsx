@@ -1,6 +1,9 @@
 import { Clock3, CookingPot } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { BootstrapUnavailable } from "@/components/bootstrap-unavailable";
+import { getBootstrap } from "@/lib/server/bootstrap";
+import { redirect } from "next/navigation";
 
 const weekMenu = [
   {
@@ -49,9 +52,13 @@ const weekMenu = [
 
 const mealLabels = ["Café", "Almoço", "Jantar"] as const;
 
-export default function MealsPage() {
+export default async function MealsPage() {
+  const state = await getBootstrap();
+  if (state.status === "anonymous") redirect("/entrar");
+  if (state.status === "needs-space") redirect("/comecar");
+  if (state.status === "unavailable") return <BootstrapUnavailable retryHref="/comidas" />;
   return (
-    <AppShell currentPath="/comidas">
+    <AppShell currentPath="/comidas" user={state.bootstrap.user} space={state.bootstrap.space}>
       <section className="collection-view collection-view--wide" aria-labelledby="meals-title">
         <header className="collection-heading">
           <div>

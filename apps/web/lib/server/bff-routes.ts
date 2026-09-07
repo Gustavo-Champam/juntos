@@ -9,7 +9,7 @@ import {
   googleExchangeRequestSchema,
   googleExchangeResponseSchema,
 } from "@juntos/contracts";
-import { backendFetch } from "./api-client";
+import { backendFetch, getInternalProxyKey } from "./api-client";
 import { clearCookie, cookieConfig, getClientId, opaqueTokenPattern, setSessionCookie, type CookieStore } from "./auth-cookies";
 import { createOAuthAttempt, validateOAuthCallback } from "./oauth-state";
 import { assertSameOrigin, SameOriginError } from "./same-origin";
@@ -61,8 +61,9 @@ export async function startGoogle(request: Request) {
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const redirectUri = process.env.GOOGLE_REDIRECT_URI;
-    const key = process.env.INTERNAL_PROXY_KEY;
-    if (!clientId || !redirectUri || !key) throw new RequestFailure(503);
+    if (!clientId || !redirectUri) throw new RequestFailure(503);
+    let key: string;
+    try { key = getInternalProxyKey(); } catch { throw new RequestFailure(503); }
     const redirect = new URL(redirectUri);
     if (redirect.origin !== new URL(request.url).origin || redirect.pathname !== "/api/auth/google/callback" || redirect.search || redirect.hash) throw new RequestFailure(503);
     const store = await cookies();
@@ -89,7 +90,7 @@ export async function googleCallback(request: Request) {
     const query = new URL(request.url).searchParams;
     let attempt;
     try {
-      attempt = validateOAuthCallback(store, query.get("state"), process.env.INTERNAL_PROXY_KEY ?? "");
+      attempt = validateOAuthCallback(store, query.get("state"), getInternalProxyKey());
       if (query.has("error") || query.getAll("state").length !== 1 || query.getAll("code").length !== 1) throw new Error("Invalid callback");
     } catch { throw new RequestFailure(400); }
     const parsed = googleExchangeRequestSchema.safeParse({ code: query.get("code"), nonce: attempt.nonce, codeVerifier: attempt.codeVerifier });

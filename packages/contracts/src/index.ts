@@ -10,3 +10,4 @@ export const healthResponseSchema = z
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
 export * from "./identity.js";
+export * from "./security.js";

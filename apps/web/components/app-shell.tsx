@@ -34,8 +34,16 @@ export function AppShell({ children, currentPath = "/", user, space }: AppShellP
           href="/perfil"
           aria-label="Abrir perfil e configurações"
         >
-          <span className="profile-pair" aria-hidden="true">
-            <span>{user?.name.slice(0, 1) ?? "J"}</span>
+          <span className="profile-pair">
+            <span className="profile-user-avatar" aria-hidden={user?.avatarUrl ? undefined : true}>
+              {user?.avatarUrl ? (
+                // Google may serve profile photos from several hosts; keep this remote image outside Next's host allowlist.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatarUrl} alt={`Foto de ${user.name}`} referrerPolicy="no-referrer" />
+              ) : (
+                user?.name.slice(0, 1) ?? "J"
+              )}
+            </span>
             <span>{space?.memberCount === 2 ? "2" : "+"}</span>
           </span>
           <span className="profile-copy">

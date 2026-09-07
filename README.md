@@ -59,7 +59,7 @@ Crie o projeto a partir deste repositório e configure:
 - **Include source files outside of the Root Directory:** ativado
 - **Framework Preset:** Next.js
 - **API_BASE_URL:** URL pública da API no Render, sem barra final
-- **INTERNAL_PROXY_KEY:** o mesmo segredo forte que será informado no Render
+- **INTERNAL_PROXY_KEY:** o mesmo segredo de 32 bytes em base64url informado no Render
 - **GOOGLE_CLIENT_ID:** ID do cliente OAuth Web do Google
 - **GOOGLE_REDIRECT_URI:** `https://<dominio-vercel>/api/auth/google/callback`
 
@@ -81,6 +81,18 @@ Antes da primeira publicação, preencha no Render os valores secretos:
 exatamente o mesmo configurado na Vercel. Informe `WEB_ORIGIN` com a origem
 exata do site, por exemplo `https://juntos.vercel.app`, sem barra final.
 
+Gere `INTERNAL_PROXY_KEY` uma única vez com um gerador criptográfico. O valor
+deve ser a codificação base64url, sem `=`, de 32 bytes aleatórios (43
+caracteres). Por exemplo, execute localmente:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Copie o resultado diretamente para os dois painéis. A aplicação recusa valores
+curtos, placeholders e codificações fora desse formato; não salve o resultado
+em nenhum arquivo do repositório.
+
 O comando de início aplica migrações idempotentes antes de iniciar a API. Isso
 é necessário porque o plano Free do Render não oferece comando de pré-publicação.
 
@@ -95,7 +107,7 @@ backup ou migre os dados para outro PostgreSQL gerenciado.
 | Variável | Onde | Finalidade |
 | --- | --- | --- |
 | `API_BASE_URL` | Vercel | Endereço privado usado pelo servidor Next.js para chamar a API |
-| `INTERNAL_PROXY_KEY` | Vercel e Render | Segredo reservado para autenticar o proxy interno |
+| `INTERNAL_PROXY_KEY` | Vercel e Render | Mesmo segredo aleatório de 32 bytes, em base64url canônico com 43 caracteres |
 | `GOOGLE_CLIENT_ID` | Vercel e Render | Identificador público do mesmo cliente OAuth Web |
 | `GOOGLE_CLIENT_SECRET` | Render | Segredo OAuth; nunca vai para a Vercel ou Git |
 | `GOOGLE_REDIRECT_URI` | Vercel e Render | Callback exato do login, igual nos dois serviços |

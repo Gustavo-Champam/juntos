@@ -30,4 +30,13 @@ describe("home route gate", () => {
     render(await Home());
     expect(screen.getByRole("list", { name: "Rotina do dia" })).toBeInTheDocument();
   });
+
+  it("offers a calm retry without redirecting when private data is unavailable", async () => {
+    getBootstrap.mockResolvedValue({ status: "unavailable" });
+    render(await Home());
+    expect(redirect).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Não foi possível carregar agora." })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Tentar novamente" })).toHaveAttribute("href", "/");
+    expect(document.body).not.toHaveTextContent("private");
+  });
 });

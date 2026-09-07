@@ -1,8 +1,15 @@
 import "server-only";
+import { internalProxyKeySchema } from "@juntos/contracts";
 import { cookies } from "next/headers";
 
 import { createBackendClient } from "./api-client-core";
 import { getClientId } from "./auth-cookies";
+
+export function getInternalProxyKey(): string {
+  const result = internalProxyKeySchema.safeParse(process.env.INTERNAL_PROXY_KEY);
+  if (!result.success) throw new Error("Invalid internal proxy key configuration");
+  return result.data;
+}
 
 export async function backendFetch(
   path: string,
@@ -10,9 +17,9 @@ export async function backendFetch(
   session?: string,
 ): Promise<Response> {
   const apiBaseUrl = process.env.API_BASE_URL;
-  const proxyKey = process.env.INTERNAL_PROXY_KEY;
+  const proxyKey = getInternalProxyKey();
 
-  if (!apiBaseUrl || !proxyKey) {
+  if (!apiBaseUrl) {
     throw new Error("Backend configuration is required");
   }
 

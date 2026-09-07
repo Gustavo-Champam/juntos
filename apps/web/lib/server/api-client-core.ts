@@ -1,4 +1,5 @@
 import "server-only";
+import { internalProxyKeySchema } from "@juntos/contracts";
 
 type BackendClientOptions = {
   baseUrl: string;
@@ -13,6 +14,9 @@ export function createBackendClient({
   proxyKey,
   clientId,
 }: BackendClientOptions) {
+  if (!internalProxyKeySchema.safeParse(proxyKey).success) {
+    throw new Error("Invalid internal proxy key");
+  }
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
 
   return async function backendFetch(
@@ -24,7 +28,7 @@ export function createBackendClient({
       throw new Error("Expected a backend-relative path beginning with one slash");
     }
 
-    if (!proxyKey || !/^[a-f0-9]{64}$/.test(clientId)) throw new Error("Missing internal credentials");
+    if (!/^[a-f0-9]{64}$/.test(clientId)) throw new Error("Missing internal credentials");
     if (session !== undefined && !/^[A-Za-z0-9_-]{43}$/.test(session)) throw new Error("Invalid session");
     const headers = new Headers(init.headers);
     headers.set("x-juntos-proxy-key", proxyKey);

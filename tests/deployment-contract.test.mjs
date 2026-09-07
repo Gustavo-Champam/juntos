@@ -19,6 +19,14 @@ function readYaml(relativePath) {
   return parse(readFileSync(path.join(repositoryRoot, relativePath), "utf8"));
 }
 
+function envValue(relativePath, key) {
+  const line = readFileSync(path.join(repositoryRoot, relativePath), "utf8")
+    .split(/\r?\n/)
+    .find((candidate) => candidate.startsWith(`${key}=`));
+  assert.ok(line, `${key} must be documented in ${relativePath}`);
+  return line.slice(key.length + 1);
+}
+
 test("Vercel deploys the web workspace as Next.js", () => {
   const vercel = readJson("apps/web/vercel.json");
 
@@ -76,5 +84,14 @@ test("Render requires manually configured identity values so Vercel and Render c
     assert.equal(variable.sync, false, `${key} must be configured outside the repository`);
     assert.equal("value" in variable, false, `${key} must not be tracked`);
     assert.equal("generateValue" in variable, false, `${key} must not diverge from Vercel`);
+  }
+});
+
+test("tracked environment examples cannot be mistaken for a deployable internal proxy key", () => {
+  const canonicalKey = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
+  for (const file of [".env.example", "apps/api/.env.example", "apps/web/.env.example"]) {
+    const value = envValue(file, "INTERNAL_PROXY_KEY");
+    assert.match(value, /generate/i);
+    assert.equal(canonicalKey.test(value), false, `${file} must contain an invalid instructional placeholder`);
   }
 });

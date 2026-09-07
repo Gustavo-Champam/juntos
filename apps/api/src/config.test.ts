@@ -14,7 +14,7 @@ describe("parseConfig", () => {
       googleClientId: "test-google-client-id",
       googleClientSecret: "test-google-client-secret",
       googleRedirectUri: "http://localhost:4000/auth/google/callback",
-      internalProxyKey: "test-internal-proxy-key",
+      internalProxyKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
     });
   });
 
@@ -32,12 +32,23 @@ describe("parseConfig", () => {
         GOOGLE_CLIENT_ID: "google-client-id",
         GOOGLE_CLIENT_SECRET: "google-client-secret",
         GOOGLE_REDIRECT_URI: "http://localhost:4000/auth/google/callback",
-        INTERNAL_PROXY_KEY: "internal-proxy-key",
+        INTERNAL_PROXY_KEY: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
       }),
     ).toMatchObject({
       nodeEnv: "development",
       databaseSsl: true,
       databaseUrl: "postgres://juntos:juntos@localhost:5432/juntos",
     });
+  });
+
+  it.each([
+    "replace-with-one-shared-random-secret",
+    "short",
+    "A".repeat(43),
+    "A".repeat(42),
+    "A".repeat(42) + "B",
+    "A".repeat(42) + "!",
+  ])("rejects a weak or non-canonical internal proxy key: %s", (internalProxyKey) => {
+    expect(() => parseConfig({ NODE_ENV: "test", INTERNAL_PROXY_KEY: internalProxyKey })).toThrow(/INTERNAL_PROXY_KEY/);
   });
 });

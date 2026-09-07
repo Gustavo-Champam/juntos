@@ -59,4 +59,20 @@ describe("AppShell", () => {
       "aria-current",
     );
   });
+
+  it("shows the Google avatar with a non-referring request and keeps the initial fallback", () => {
+    const { rerender } = render(
+      <AppShell user={{ id: "u1", email: "ana@example.com", name: "Ana", avatarUrl: "https://lh3.googleusercontent.com/avatar" }}>
+        <p>Conteúdo</p>
+      </AppShell>,
+    );
+
+    const avatar = screen.getByRole("img", { name: "Foto de Ana" });
+    expect(avatar).toHaveAttribute("src", "https://lh3.googleusercontent.com/avatar");
+    expect(avatar).toHaveAttribute("referrerpolicy", "no-referrer");
+
+    rerender(<AppShell user={{ id: "u1", email: "ana@example.com", name: "Ana", avatarUrl: null }}><p>Conteúdo</p></AppShell>);
+    expect(screen.queryByRole("img", { name: "Foto de Ana" })).not.toBeInTheDocument();
+    expect(screen.getByText("A", { selector: ".profile-user-avatar" })).toBeInTheDocument();
+  });
 });

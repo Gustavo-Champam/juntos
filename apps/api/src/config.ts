@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { internalProxyKeySchema } from "@juntos/contracts";
 
 const nodeEnvironmentSchema = z
   .enum(["development", "test", "production"])
@@ -17,7 +18,7 @@ const environmentSchema = z
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     GOOGLE_REDIRECT_URI: z.url(),
-    INTERNAL_PROXY_KEY: z.string().min(1),
+    INTERNAL_PROXY_KEY: internalProxyKeySchema,
   })
   .superRefine((value, context) => {
     if (value.NODE_ENV === "production" && !value.WEB_ORIGIN) {
@@ -54,7 +55,7 @@ export function parseConfig(
           GOOGLE_CLIENT_ID: "test-google-client-id",
           GOOGLE_CLIENT_SECRET: "test-google-client-secret",
           GOOGLE_REDIRECT_URI: "http://localhost:4000/auth/google/callback",
-          INTERNAL_PROXY_KEY: "test-internal-proxy-key",
+          INTERNAL_PROXY_KEY: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
         }
       : {};
   const parsed = environmentSchema.parse({ ...testDefaults, ...environment });

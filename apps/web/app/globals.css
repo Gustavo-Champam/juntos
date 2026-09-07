@@ -522,6 +522,17 @@ a:focus-visible {
   transform: translateY(-2px);
 }
 
+.profile-pair .profile-user-avatar {
+  overflow: hidden;
+  padding: 0;
+}
+
+.profile-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .collection-view {
   width: min(100%, 860px);
   min-height: 100svh;
@@ -873,6 +884,7 @@ a:focus-visible {
 }
 
 .identity-action:hover { background: #405037; }
+.bootstrap-unavailable .identity-action { width: fit-content; }
 .google-mark { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: white; color: var(--sage-deep); font-family: Arial, sans-serif; font-weight: 800; }
 .identity-action:disabled, .danger-button:disabled { cursor: wait; opacity: 0.62; }
 

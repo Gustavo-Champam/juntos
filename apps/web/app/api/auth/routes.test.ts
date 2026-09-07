@@ -17,7 +17,7 @@ import { POST as preserve } from "../invitations/preserve/route";
 import { POST as accept } from "../invitations/accept/route";
 
 const origin = "https://juntos.example";
-const key = "internal-test-secret";
+const key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
 const session = "s".repeat(43);
 const token = "t".repeat(43);
 const user = { id: "user-1", email: "user@example.com", name: "User", avatarUrl: null };
@@ -41,6 +41,14 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("OAuth routes", () => {
+  it("fails closed before OAuth when the internal proxy key is weak", async () => {
+    vi.stubEnv("INTERNAL_PROXY_KEY", "replace-with-one-shared-random-secret");
+    const response = await start(new Request(`${origin}/api/auth/google/start`));
+    expect(response.status).toBe(503);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(jar.writes).toHaveLength(0);
+  });
+
   it("starts Google login with state, nonce and S256 and private ten-minute cookies", async () => {
     const response = await start(new Request(`${origin}/api/auth/google/start`));
     expect(response.status).toBe(303);

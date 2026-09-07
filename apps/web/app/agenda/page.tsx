@@ -1,6 +1,9 @@
 import { CalendarCheck2, MapPin, UsersRound } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { BootstrapUnavailable } from "@/components/bootstrap-unavailable";
+import { getBootstrap } from "@/lib/server/bootstrap";
+import { redirect } from "next/navigation";
 
 const commitments = [
   {
@@ -37,9 +40,13 @@ const commitments = [
   },
 ] as const;
 
-export default function AgendaPage() {
+export default async function AgendaPage() {
+  const state = await getBootstrap();
+  if (state.status === "anonymous") redirect("/entrar");
+  if (state.status === "needs-space") redirect("/comecar");
+  if (state.status === "unavailable") return <BootstrapUnavailable retryHref="/agenda" />;
   return (
-    <AppShell currentPath="/agenda">
+    <AppShell currentPath="/agenda" user={state.bootstrap.user} space={state.bootstrap.space}>
       <section className="collection-view" aria-labelledby="agenda-title">
         <header className="collection-heading">
           <div>
