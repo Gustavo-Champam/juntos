@@ -112,6 +112,13 @@ describe("agenda query and request contracts", () => {
     expect(agendaQuerySchema.safeParse({ from: "2028-02-01", to: "2028-02-02", revision: "4.2" }).success).toBe(false);
   });
 
+  it("rejects impossible query dates without throwing during range validation", () => {
+    const query = { from: "2028-02-30", to: "2028-03-01" };
+
+    expect(() => agendaQuerySchema.safeParse(query)).not.toThrow();
+    expect(agendaQuerySchema.safeParse(query)).toMatchObject({ success: false });
+  });
+
   it("accepts only strict client mutation envelopes", () => {
     expect(createAgendaRequestSchema.parse({ event: fields }).event.title).toBe("Aula");
     expect(updateAgendaRequestSchema.parse({ expectedVersion: 1, event: fields }).expectedVersion).toBe(1);

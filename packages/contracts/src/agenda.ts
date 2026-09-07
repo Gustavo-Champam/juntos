@@ -150,6 +150,10 @@ export const agendaQuerySchema = z.object({
   to: civilDateSchema,
   revision: revisionSchema.optional(),
 }).strict().superRefine((value, context) => {
+  if (!isSupportedCivilDate(value.from) || !isSupportedCivilDate(value.to)) {
+    return;
+  }
+
   if (value.to < value.from || value.to > addCivilDays(value.from, 41)) {
     context.addIssue({
       code: "custom",
