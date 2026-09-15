@@ -31,6 +31,11 @@ const LEXICON: Record<string, string> = {
   banana: "banana",
   iogurte: "iogurte",
   granola: "granola",
+  strogonoff: "strogonoff",
+  estrogonofe: "strogonoff",
+  lasanha: "lasanha",
+  pizza: "pizza",
+  tapioca: "tapioca",
 };
 
 const ADJECTIVES = new Set(["grelhada", "grelhado", "assada", "assado", "frita", "frito", "cozida", "cozido"]);

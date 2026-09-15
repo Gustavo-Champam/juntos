@@ -31,6 +31,19 @@ describe("AppShell", () => {
     ]);
   });
 
+  it("keeps Pedir à IA as its own action outside the four tabs", () => {
+    render(
+      <AppShell>
+        <p>Conteúdo</p>
+      </AppShell>,
+    );
+
+    const pedir = screen.getByRole("link", { name: "Pedir à IA" });
+    expect(pedir).toHaveAttribute("href", "/pedir");
+    const navigation = screen.getByRole("navigation", { name: "Navegação principal" });
+    expect(navigation).not.toContainElement(pedir);
+  });
+
   it("keeps profile and settings separate from primary navigation", () => {
     render(
       <AppShell>

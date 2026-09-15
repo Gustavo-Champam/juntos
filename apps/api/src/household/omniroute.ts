@@ -52,7 +52,7 @@ export async function omniChat(input: {
         body: JSON.stringify({
           model,
           messages: input.messages,
-          temperature: 0.4,
+          temperature: 0.2,
           max_tokens: input.maxTokens ?? 500,
         }),
       });

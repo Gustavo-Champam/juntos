@@ -83,6 +83,7 @@ describe("product pages", () => {
     render(await ShoppingPage());
 
     expect(screen.getByRole("heading", { name: "Lista de compras" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Lista vazia nesta semana" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Sugerir com IA/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Adicionar" })).toBeInTheDocument();
   });

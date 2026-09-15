@@ -58,5 +58,38 @@ describe("assistant parser", () => {
   it("resolves hoje and weekday names", () => {
     expect(resolveSpokenDate("hoje às 10", "2026-09-15")).toBe("2026-09-15");
     expect(extractSpokenTime("às 9h30")).toBe("09:30");
+    expect(extractSpokenTime("2 ovos")).toBeNull();
+  });
+
+  it("matches strogonoff and a night class in one phrase", () => {
+    const actions = parseAssistantCommand(
+      "Almoço de hoje é strogonoff e à noite tem faculdade às 19h",
+      "2026-09-15",
+    );
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "meal",
+          mealType: "lunch",
+          title: "Strogonoff de frango",
+          recipeId: "strogonoff-frango",
+        }),
+        expect.objectContaining({
+          type: "agenda",
+          title: "Faculdade",
+          time: "19:00",
+        }),
+      ]),
+    );
+  });
+
+  it("splits several grocery items onto the list", () => {
+    const actions = parseAssistantCommand("coloca banana e leite na lista", "2026-09-15");
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "shopping", name: "banana", category: "hortifruti" }),
+        expect.objectContaining({ type: "shopping", name: "leite", category: "laticinios" }),
+      ]),
+    );
   });
 });

@@ -46,6 +46,12 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+button:not(:disabled),
+a,
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
 button {
   color: inherit;
   font: inherit;
@@ -105,8 +111,8 @@ a:focus-visible {
   height: 100svh;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 30px 24px 24px;
+  gap: 10px;
+  padding: 28px 18px 20px;
 }
 
 .brand {
@@ -163,6 +169,7 @@ a:focus-visible {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 11px;
+  margin-top: auto;
   padding: 9px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -221,14 +228,10 @@ a:focus-visible {
 }
 
 .primary-navigation {
-  position: fixed;
-  z-index: 4;
-  top: 116px;
-  left: 18px;
-  width: 212px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
+  width: 100%;
 }
 
 .navigation-link {
@@ -265,7 +268,7 @@ a:focus-visible {
   width: min(100%, 860px);
   min-height: 100svh;
   margin: 0 auto;
-  padding: 76px 54px 110px;
+  padding: 48px 40px 110px;
 }
 
 .day-heading {
@@ -537,7 +540,7 @@ a:focus-visible {
   width: min(100%, 860px);
   min-height: 100svh;
   margin: 0 auto;
-  padding: 76px 54px 110px;
+  padding: 48px 40px 96px;
 }
 
 .collection-view--wide {
@@ -713,7 +716,7 @@ a:focus-visible {
   position: relative;
   min-height: 76px;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 14px;
   border-bottom: 1px solid var(--line);
@@ -782,6 +785,12 @@ a:focus-visible {
   color: var(--muted);
   font-size: 12px;
   font-weight: 750;
+}
+
+.shopping-row .quiet-button {
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .shopping-row:has(input:checked) .shopping-copy,
@@ -922,10 +931,11 @@ a:focus-visible {
     top: 0;
     z-index: 10;
     width: 100%;
-    height: 68px;
+    height: 64px;
     flex-direction: row;
     align-items: center;
-    padding: 8px 18px;
+    gap: 8px;
+    padding: 8px 14px;
     border-bottom: 1px solid rgba(201, 200, 189, 0.72);
     background: color-mix(in srgb, var(--paper) 94%, transparent);
     backdrop-filter: blur(12px);
@@ -953,6 +963,7 @@ a:focus-visible {
     width: auto;
     min-height: 48px;
     grid-template-columns: auto;
+    margin-top: 0;
     padding: 6px;
   }
 
@@ -963,6 +974,18 @@ a:focus-visible {
   .profile-copy,
   .profile-settings-icon {
     display: none;
+  }
+
+  .pedir-link {
+    width: auto;
+    min-height: 42px;
+    margin-left: auto;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  .reminder-banner {
+    bottom: calc(92px + env(safe-area-inset-bottom));
   }
 
   .primary-navigation {
@@ -1324,7 +1347,7 @@ a:focus-visible {
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 30;
   display: grid;
   align-items: end;
   padding: 18px 14px 16px;
@@ -1564,6 +1587,12 @@ a:focus-visible {
 @media (max-width: 720px) {
   .suggestion-grid,
   .ai-ask-row,
+  .add-item-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
   .times-row {
     grid-template-columns: 1fr;
   }
@@ -1576,17 +1605,27 @@ a:focus-visible {
 }
 
 .pedir-link {
-  min-height: 42px;
+  width: 100%;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 8px;
   padding: 0 14px;
   border-radius: 999px;
-  background: var(--sage-soft);
-  color: var(--sage-deep);
+  background: var(--sage-deep);
+  color: white;
   font-size: 13px;
   font-weight: 800;
   text-decoration: none;
+}
+
+.pedir-link[aria-current="page"] {
+  background: var(--sage);
+}
+
+.pedir-link:hover {
+  background: #405037;
 }
 
 .check-inline {
@@ -1596,6 +1635,10 @@ a:focus-visible {
   margin: 8px 0 0;
   font-size: 14px;
   font-weight: 700;
+}
+
+.hide-bought {
+  margin: 4px 0 12px;
 }
 
 .times-row {
@@ -1645,7 +1688,7 @@ a:focus-visible {
   position: fixed;
   z-index: 24;
   right: 16px;
-  bottom: 92px;
+  bottom: 24px;
   width: min(calc(100% - 32px), 360px);
   padding: 14px 16px;
   border: 1px solid var(--line-strong);
@@ -1658,5 +1701,90 @@ a:focus-visible {
   margin: 0 0 10px;
   font-size: 14px;
   font-weight: 650;
+}
+
+.add-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 88px minmax(110px, 0.8fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0 18px;
+}
+
+.add-item-row input,
+.add-item-row select {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.add-item-row .identity-action {
+  margin-top: 0;
+}
+
+.empty-collection {
+  margin: 8px 0 28px;
+  padding: 22px 20px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.empty-collection h2 {
+  margin: 0;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 590;
+}
+
+.empty-collection p {
+  max-width: 460px;
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.list-progress {
+  height: 6px;
+  margin: 0 0 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--sage-soft);
+}
+
+.list-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sage-deep);
+}
+
+.suggestion-missing {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.result-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.result-links a {
+  color: var(--sage-deep);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.assistant-form .form-actions {
+  margin-top: 4px;
 }
 

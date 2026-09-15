@@ -1,7 +1,8 @@
 "use client";
 
-import { CalendarCheck2, CookingPot, ShoppingBasket, Sparkles } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { CalendarCheck2, CookingPot, Mic, ShoppingBasket, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { household } from "@/lib/household-client";
 
@@ -12,20 +13,69 @@ type AssistantPayload = {
   results?: Array<{ type: string; ok: boolean; detail: string }>;
 };
 
+type SpeechRec = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
 const EXAMPLES = [
-  "Coloque na agenda que tenho consulta amanhã 17h e a janta vai ser arroz, feijão e carne",
+  "Consulta amanhã 17h e jantar arroz, feijão e carne",
   "Almoço de hoje é strogonoff e à noite tem faculdade às 19h",
-  "Sábado 10h mercado e coloca banana na lista",
+  "Sábado 10h mercado e coloca banana e leite na lista",
 ];
+
+function speechEngine(): (new () => SpeechRec) | null {
+  if (typeof window === "undefined") return null;
+  const host = window as Window & {
+    SpeechRecognition?: new () => SpeechRec;
+    webkitSpeechRecognition?: new () => SpeechRec;
+  };
+  return host.SpeechRecognition ?? host.webkitSpeechRecognition ?? null;
+}
 
 export function AssistantBoard() {
   const [command, setCommand] = useState("");
   const [pending, setPending] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [canSpeak, setCanSpeak] = useState(false);
   const [result, setResult] = useState<AssistantPayload | null>(null);
+  const recRef = useRef<SpeechRec | null>(null);
+
+  useEffect(() => {
+    setCanSpeak(Boolean(speechEngine()));
+    return () => recRef.current?.stop();
+  }, []);
+
+  function listen() {
+    const Engine = speechEngine();
+    if (!Engine || pending) return;
+    recRef.current?.stop();
+    const rec = new Engine();
+    rec.lang = "pt-BR";
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.onresult = (event) => {
+      const spoken = event.results[0]?.[0]?.transcript?.trim();
+      if (spoken) setCommand((current) => (current ? `${current.trim()} ${spoken}` : spoken));
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!command.trim() || pending) return;
+    recRef.current?.stop();
+    setListening(false);
     setPending(true);
     setResult(null);
     try {
@@ -62,10 +112,24 @@ export function AssistantBoard() {
           onChange={(event) => setCommand(event.target.value)}
           placeholder="Ex.: consulta amanhã 17h e jantar arroz, feijão e carne"
         />
-        <button className="identity-action" type="submit" disabled={pending}>
-          <Sparkles size={16} aria-hidden="true" />
-          {pending ? "Organizando…" : "Fazer isso"}
-        </button>
+        <div className="form-actions">
+          <button className="identity-action" type="submit" disabled={pending}>
+            <Sparkles size={16} aria-hidden="true" />
+            {pending ? "Organizando…" : "Fazer isso"}
+          </button>
+          {canSpeak ? (
+            <button
+              className="quiet-button"
+              type="button"
+              onClick={listen}
+              disabled={pending}
+              aria-pressed={listening}
+            >
+              <Mic size={16} aria-hidden="true" />
+              {listening ? "Ouvindo…" : "Falar"}
+            </button>
+          ) : null}
+        </div>
       </form>
 
       {result?.ok ? (
@@ -82,6 +146,11 @@ export function AssistantBoard() {
               </li>
             ))}
           </ul>
+          <div className="result-links">
+            <Link href="/agenda">Agenda</Link>
+            <Link href="/comidas">Cardápio</Link>
+            <Link href="/compras">Compras</Link>
+          </div>
         </div>
       ) : null}
       {result && !result.ok ? (
