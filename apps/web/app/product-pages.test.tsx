@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,19 +43,21 @@ describe("product pages", () => {
     expect(screen.queryByText("Começar o trabalho")).not.toBeInTheDocument();
   });
 
-  it("shows three meal slots per day for the current week", async () => {
+  it("opens the full recipe catalog when choosing a meal", async () => {
     const { default: MealsPage } = await import(
       /* @vite-ignore */ pageUrl("app/comidas/page.tsx")
     );
 
     render(await MealsPage());
-
-    expect(screen.getByRole("heading", { name: "Cardápio da semana" })).toBeInTheDocument();
     const days = within(screen.getByRole("list", { name: "Refeições da semana" })).getAllByRole("listitem");
     expect(days).toHaveLength(7);
-    days.forEach((day) => {
-      expect(within(day).getAllByText(/^(Café|Almoço|Jantar)$/)).toHaveLength(3);
-    });
+    fireEvent.click(screen.getAllByRole("button", { name: /Escolher café/i })[0]!);
+
+    expect(screen.getByRole("heading", { name: "Escolher refeição" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Catálogo de receitas" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Iogurte, fruta e granola/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ou escrever na mão")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Pedir sugestão da IA neste horário/i })).toBeInTheDocument();
   });
 
   it("shows the live shopping list with AI suggestions", async () => {

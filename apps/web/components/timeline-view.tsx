@@ -14,6 +14,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 import { buildTimeline } from "@/features/timeline/build-timeline";
 import type {
@@ -105,6 +106,7 @@ export function TimelineView({
   meals,
 }: Readonly<TimelineViewProps>) {
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [adding, setAdding] = useState(false);
   const timeline = useMemo(
     () => buildTimeline({ date: selectedDate, events, meals }),
     [events, meals, selectedDate],
@@ -185,10 +187,23 @@ export function TimelineView({
         </div>
       )}
 
-      <button className="add-button" type="button" aria-label="Adicionar à rotina">
+      <button className="add-button" type="button" aria-label="Adicionar à rotina" onClick={() => setAdding(true)}>
         <Plus size={20} aria-hidden="true" />
         <span>Adicionar</span>
       </button>
+      {adding ? (
+        <div className="sheet-backdrop" role="presentation" onClick={() => setAdding(false)}>
+          <section className="editor-sheet sheet-card" aria-labelledby="add-title" onClick={(event) => event.stopPropagation()}>
+            <h2 id="add-title">O que vocês querem acrescentar?</h2>
+            <p className="picker-lead">A rotina junta compromissos e refeições do mesmo dia.</p>
+            <div className="add-choices">
+              <Link className="identity-action" href="/agenda">Compromisso na agenda</Link>
+              <Link className="quiet-button" href="/comidas">Refeição no cardápio</Link>
+              <button className="quiet-button" type="button" onClick={() => setAdding(false)}>Agora não</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
