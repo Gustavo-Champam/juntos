@@ -10,7 +10,7 @@ const migrationsDirectory = fileURLToPath(
 );
 
 describe("applyMigrations", () => {
-  it("creates the identity tables and enforces UUID relationships", async () => {
+  it("creates the identity and agenda tables and enforces UUID relationships", async () => {
     const database = newDb({ noAstCoverageCheck: true });
     database.public.registerFunction({
       name: "octet_length",
@@ -29,6 +29,9 @@ describe("applyMigrations", () => {
     )) as { rows: Array<{ table_name: string }> };
 
     expect(tables.rows.map((row) => row.table_name)).toEqual([
+      "agenda_activity",
+      "agenda_events",
+      "agenda_state",
       "couple_spaces",
       "invitations",
       "memberships",
@@ -61,6 +64,9 @@ describe("applyMigrations", () => {
     const applied = (await pool.query(
       "select filename from schema_migrations order by filename",
     )) as { rows: Array<{ filename: string }> };
-    expect(applied.rows).toEqual([{ filename: "0001_identity.sql" }]);
+    expect(applied.rows).toEqual([
+      { filename: "0001_identity.sql" },
+      { filename: "0002_agenda.sql" },
+    ]);
   });
 });
