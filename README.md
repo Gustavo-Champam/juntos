@@ -6,7 +6,13 @@ em uma única linha do tempo, sem painéis extras.
 
 Este repositório contém o frontend Next.js, a API Fastify, contratos
 compartilhados, login Google, sessões privadas, espaço do casal e convite de
-uso único. Agenda, refeições e compras serão as próximas fases persistidas.
+uso único.
+
+A versão completa da agenda, do cardápio, da lista de compras e das
+**sugestões de receitas com IA gratuita (OmniRoute)** está em
+[`apps/completa`](./apps/completa).
+
+## Requisitos
 
 ## Requisitos
 
