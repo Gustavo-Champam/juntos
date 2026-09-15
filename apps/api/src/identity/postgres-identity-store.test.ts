@@ -176,6 +176,46 @@ class ReciprocalAcceptanceDatabase {
   }
 }
 
+class ExistingMembershipReciprocalDatabase {
+  readonly initialMembershipChecks: ReciprocalRole[] = [];
+  readonly targetLockAttempts: ReciprocalRole[] = [];
+  private connectionIndex = 0;
+
+  async connect() {
+    const role = (["accept-a", "accept-b"] as const)[this.connectionIndex++];
+    if (!role) throw new Error("unexpected transaction");
+    const targetSpaceId = role === "accept-a" ? "space-a" : "space-b";
+    const foreignSpaceId = role === "accept-a" ? "space-b" : "space-a";
+    const inviteId = role === "accept-a" ? "invite-a" : "invite-b";
+    return {
+      query: async <T>(statement: string) => {
+        const sql = statement.replace(/\s+/g, " ").trim().toLowerCase();
+        if (sql === "begin" || sql === "commit" || sql === "rollback") return { rows: [] } as { rows: T[] };
+        if (sql.includes("from invitations") && !sql.includes("for update")) {
+          return { rows: [{ id: inviteId, space_id: targetSpaceId }] } as { rows: T[] };
+        }
+        if (sql.includes("from memberships") && !sql.includes("for update")) {
+          this.initialMembershipChecks.push(role);
+          return { rows: [{ space_id: foreignSpaceId }] } as { rows: T[] };
+        }
+        if (sql.includes("from couple_spaces") && sql.includes("for update")) {
+          this.targetLockAttempts.push(role);
+          throw new Error("target space must not lock for an existing foreign membership");
+        }
+        if (sql.includes("from memberships") && sql.includes("for update")) {
+          throw new Error("candidate lookup must not acquire a membership lock");
+        }
+        throw new Error(`unexpected query for ${role}: ${sql}`);
+      },
+      release: () => undefined,
+    };
+  }
+
+  async query(): Promise<never> {
+    throw new Error("root queries are not used in existing-membership tests");
+  }
+}
+
 async function createStore() {
   const database = newDb({ noAstCoverageCheck: true });
   database.public.registerFunction({
@@ -304,7 +344,7 @@ describe("PostgresIdentityStore", () => {
     expect(database.lockOrder.leave).toEqual(["space", "membership", "membership"]);
   });
 
-  it("prevents reciprocal cross-space accepts from locking foreign memberships", async () => {
+  it("arbitrates concurrent accepts without memberships through the unique constraint", async () => {
     const database = new ReciprocalAcceptanceDatabase();
     const store = new PostgresIdentityStore(database as unknown as Database);
     const acceptedAt = new Date("2026-09-05T00:00:00.000Z");
@@ -318,5 +358,22 @@ describe("PostgresIdentityStore", () => {
     expect(results.find((result) => result.status === "rejected")).toMatchObject({ reason: { message: "user already belongs to a space" } });
     expect(database.lockOrder["accept-a"]).toEqual(["space", "membership", "invitation"]);
     expect(database.lockOrder["accept-b"]).toEqual(["space", "membership", "invitation"]);
+  });
+
+  it("rejects reciprocal existing memberships before any target-space lock", async () => {
+    const database = new ExistingMembershipReciprocalDatabase();
+    const store = new PostgresIdentityStore(database as unknown as Database);
+    const acceptedAt = new Date("2026-09-05T00:00:00.000Z");
+    const results = await Promise.allSettled([
+      store.acceptInvitation(biaId, hashOpaqueToken("a".repeat(43)), acceptedAt),
+      store.acceptInvitation(claraId, hashOpaqueToken("b".repeat(43)), acceptedAt),
+    ]);
+
+    expect(results).toHaveLength(2);
+    for (const result of results) {
+      expect(result).toMatchObject({ status: "rejected", reason: { message: "user already belongs to a space" } });
+    }
+    expect(database.initialMembershipChecks).toEqual(["accept-a", "accept-b"]);
+    expect(database.targetLockAttempts).toEqual([]);
   });
 });
