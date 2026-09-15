@@ -10,7 +10,6 @@ type StoreDependencies = { generateId?: () => string };
 
 type UserRow = { id: string; email: string; name: string; avatar_url: string | null };
 type InvitationRow = { id: string; space_id: string; invited_email: string | null; expires_at: Date; accepted_at: Date | null; revoked_at: Date | null };
-type InvitationTargetRow = Pick<InvitationRow, "id" | "space_id">;
 type SpaceRow = { id: string; name: string; archived_at: Date | null };
 
 function publicUser(row: UserRow): PublicUser {
@@ -19,6 +18,10 @@ function publicUser(row: UserRow): PublicUser {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
 }
 
 export class PostgresIdentityStore implements IdentityStore {
@@ -121,14 +124,22 @@ export class PostgresIdentityStore implements IdentityStore {
 
   async acceptInvitation(userId: string, tokenHash: Buffer, acceptedAt: Date): Promise<void> {
     await this.inTransaction(async (client) => {
-      const invitation = await client.query<InvitationTargetRow>(
-        `SELECT id, space_id
+      const invitation = await client.query<InvitationRow>(
+        `SELECT id, space_id, invited_email, expires_at, accepted_at, revoked_at
          FROM invitations
          WHERE token_hash = $1`,
         [tokenHash],
       );
       const invitationTarget = invitation.rows[0];
-      if (!invitationTarget) throw new Error("invitation is unavailable");
+      if (!invitationTarget || invitationTarget.accepted_at || invitationTarget.revoked_at || invitationTarget.expires_at <= acceptedAt) {
+        throw new Error("invitation is unavailable");
+      }
+
+      const existingMembership = await client.query<{ space_id: string }>(
+        "SELECT space_id FROM memberships WHERE user_id = $1",
+        [userId],
+      );
+      if (existingMembership.rows[0]) throw new Error("user already belongs to a space");
 
       const space = await client.query<SpaceRow>(
         "SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 AND archived_at IS NULL FOR UPDATE",
@@ -140,10 +151,11 @@ export class PostgresIdentityStore implements IdentityStore {
         "SELECT user_id FROM memberships WHERE space_id = $1 FOR UPDATE",
         [invitationTarget.space_id],
       );
-      const currentMembership = await client.query<{ space_id: string }>(
-        "SELECT space_id FROM memberships WHERE user_id = $1 FOR UPDATE",
+      const recheckedMembership = await client.query<{ space_id: string }>(
+        "SELECT space_id FROM memberships WHERE user_id = $1",
         [userId],
       );
+      if (recheckedMembership.rows[0]) throw new Error("user already belongs to a space");
 
       const lockedInvitation = await client.query<InvitationRow>(
         `SELECT id, space_id, invited_email, expires_at, accepted_at, revoked_at
@@ -160,12 +172,15 @@ export class PostgresIdentityStore implements IdentityStore {
       const email = user.rows[0]?.email;
       if (!email) throw new Error("user not found");
       if (invite.invited_email && invite.invited_email !== email) throw new Error("invitation email does not match");
-      if (currentMembership.rows[0]) throw new Error("user already belongs to a space");
-
-      await client.query(
-        "INSERT INTO memberships (space_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4)",
-        [invite.space_id, userId, "partner", acceptedAt],
-      );
+      try {
+        await client.query(
+          "INSERT INTO memberships (space_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4)",
+          [invite.space_id, userId, "partner", acceptedAt],
+        );
+      } catch (error) {
+        if (isUniqueViolation(error)) throw new Error("user already belongs to a space");
+        throw error;
+      }
       await client.query(
         "UPDATE invitations SET accepted_by = $2, accepted_at = $3 WHERE id = $1",
         [invite.id, userId, acceptedAt],

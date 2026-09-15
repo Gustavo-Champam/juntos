@@ -70,10 +70,11 @@ class SpaceFirstLockDatabase {
 class AuthorizationDatabase {
   rolledBack = false;
   released = false;
+  spaceQuery = "";
 
   constructor(
     private readonly membership: string | null,
-    private readonly spaceExists: boolean,
+    private readonly spaceState: "present" | "absent" | "archived",
   ) {}
 
   async connect() {
@@ -89,7 +90,12 @@ class AuthorizationDatabase {
           return { rows: this.membership ? [{ space_id: this.membership }] : [] } as { rows: T[] };
         }
         if (sql.includes("from couple_spaces") && sql.includes("for update")) {
-          return { rows: this.spaceExists ? [{ id: this.membership }] : [] } as { rows: T[] };
+          this.spaceQuery = sql;
+          if (this.spaceState === "present") return { rows: [{ id: this.membership, archived_at: null }] } as { rows: T[] };
+          if (this.spaceState === "archived" && !sql.includes("archived_at is null")) {
+            return { rows: [{ id: this.membership, archived_at: new Date("2026-09-06T12:00:00.000Z") }] } as { rows: T[] };
+          }
+          return { rows: [] } as { rows: T[] };
         }
         throw new Error(`unexpected query: ${sql}`);
       },
@@ -140,7 +146,7 @@ describe("withMemberTransaction", () => {
   });
 
   it("rejects a user with no membership with 403", async () => {
-    const database = new AuthorizationDatabase(null, false);
+    const database = new AuthorizationDatabase(null, "absent");
 
     await expect(withMemberTransaction(database as unknown as Database, "member", async () => "private"))
       .rejects.toMatchObject({ status: 403 });
@@ -148,11 +154,21 @@ describe("withMemberTransaction", () => {
     expect(database.released).toBe(true);
   });
 
-  it.each(["absent", "archived"])("rejects an %s space with 403", async () => {
-    const database = new AuthorizationDatabase("space", false);
+  it("rejects an absent space with 403", async () => {
+    const database = new AuthorizationDatabase("space", "absent");
 
     await expect(withMemberTransaction(database as unknown as Database, "member", async () => "private"))
       .rejects.toMatchObject({ status: 403 });
+    expect(database.rolledBack).toBe(true);
+    expect(database.released).toBe(true);
+  });
+
+  it("filters an archived space before it can authorize a member", async () => {
+    const database = new AuthorizationDatabase("space", "archived");
+
+    await expect(withMemberTransaction(database as unknown as Database, "member", async () => "private"))
+      .rejects.toMatchObject({ status: 403 });
+    expect(database.spaceQuery).toContain("archived_at is null");
     expect(database.rolledBack).toBe(true);
     expect(database.released).toBe(true);
   });

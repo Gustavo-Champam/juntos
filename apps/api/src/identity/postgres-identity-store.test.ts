@@ -62,6 +62,9 @@ class GlobalLockOrderDatabase {
           return { rows: [{ id: "invite", space_id: "space" }] } as { rows: T[] };
         }
         if (sql.includes("from memberships") && sql.includes("for update")) {
+          if (role === "accept" && sql.includes("where user_id = $1")) {
+            throw new Error("accept must not lock a foreign-space membership");
+          }
           this.lockRelated(role, "membership");
           if (sql.includes("where space_id = $1")) {
             return { rows: [{ user_id: "ana", role: "owner" }] } as { rows: T[] };
@@ -114,6 +117,62 @@ class GlobalLockOrderDatabase {
 
   private requireSpace(role: TransactionRole): void {
     if (this.spaceOwner !== role) throw new Error(`${role} must lock the space first`);
+  }
+}
+
+type ReciprocalRole = "accept-a" | "accept-b";
+
+class ReciprocalAcceptanceDatabase {
+  readonly lockOrder: Record<ReciprocalRole, string[]> = {
+    "accept-a": [],
+    "accept-b": [],
+  };
+  private connectionIndex = 0;
+  private membershipClaimed = false;
+
+  async connect() {
+    const role = (["accept-a", "accept-b"] as const)[this.connectionIndex++];
+    if (!role) throw new Error("unexpected transaction");
+    const spaceId = role === "accept-a" ? "space-a" : "space-b";
+    const inviteId = role === "accept-a" ? "invite-a" : "invite-b";
+    return {
+      query: async <T>(statement: string) => {
+        const sql = statement.replace(/\s+/g, " ").trim().toLowerCase();
+        if (sql === "begin" || sql === "commit" || sql === "rollback") return { rows: [] } as { rows: T[] };
+        if (sql.includes("from invitations") && !sql.includes("for update")) {
+          return { rows: [{ id: inviteId, space_id: spaceId }] } as { rows: T[] };
+        }
+        if (sql.includes("from memberships") && !sql.includes("for update")) {
+          return { rows: [] } as { rows: T[] };
+        }
+        if (sql.includes("from couple_spaces") && sql.includes("for update")) {
+          this.lockOrder[role].push("space");
+          return { rows: [{ id: spaceId, name: spaceId, archived_at: null }] } as { rows: T[] };
+        }
+        if (sql.includes("from memberships") && sql.includes("for update")) {
+          if (sql.includes("where user_id = $1")) throw new Error("foreign-space membership lock");
+          this.lockOrder[role].push("membership");
+          return { rows: [{ user_id: "owner" }] } as { rows: T[] };
+        }
+        if (sql.includes("from invitations") && sql.includes("for update")) {
+          this.lockOrder[role].push("invitation");
+          return { rows: [{ id: inviteId, space_id: spaceId, invited_email: null, expires_at: new Date("2026-10-01T00:00:00.000Z"), accepted_at: null, revoked_at: null }] } as { rows: T[] };
+        }
+        if (sql.startsWith("select email from users")) return { rows: [{ email: "bia@example.com" }] } as { rows: T[] };
+        if (sql.startsWith("insert into memberships")) {
+          if (this.membershipClaimed) throw Object.assign(new Error("duplicate membership"), { code: "23505" });
+          this.membershipClaimed = true;
+          return { rows: [] } as { rows: T[] };
+        }
+        if (sql.startsWith("update invitations set accepted_by")) return { rows: [] } as { rows: T[] };
+        throw new Error(`unexpected query for ${role}: ${sql}`);
+      },
+      release: () => undefined,
+    };
+  }
+
+  async query(): Promise<never> {
+    throw new Error("root queries are not used in reciprocal acceptance tests");
   }
 }
 
@@ -229,7 +288,7 @@ describe("PostgresIdentityStore", () => {
     const replacing = store.createInvitation(anaId, hashOpaqueToken("b".repeat(43)), undefined, new Date("2026-09-12T00:00:00.000Z"), acceptedAt);
 
     await expect(Promise.all([accepting, replacing])).resolves.toEqual([undefined, undefined]);
-    expect(database.lockOrder.accept).toEqual(["space", "membership", "membership", "invitation"]);
+    expect(database.lockOrder.accept).toEqual(["space", "membership", "invitation"]);
     expect(database.lockOrder.create).toEqual(["space", "membership", "invitation"]);
   });
 
@@ -243,5 +302,21 @@ describe("PostgresIdentityStore", () => {
     await expect(Promise.all([agenda, leaving])).resolves.toEqual(["written", undefined]);
     expect(database.lockOrder.agenda).toEqual(["space", "membership"]);
     expect(database.lockOrder.leave).toEqual(["space", "membership", "membership"]);
+  });
+
+  it("prevents reciprocal cross-space accepts from locking foreign memberships", async () => {
+    const database = new ReciprocalAcceptanceDatabase();
+    const store = new PostgresIdentityStore(database as unknown as Database);
+    const acceptedAt = new Date("2026-09-05T00:00:00.000Z");
+    const results = await Promise.allSettled([
+      store.acceptInvitation(biaId, hashOpaqueToken("a".repeat(43)), acceptedAt),
+      store.acceptInvitation(biaId, hashOpaqueToken("b".repeat(43)), acceptedAt),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({ reason: { message: "user already belongs to a space" } });
+    expect(database.lockOrder["accept-a"]).toEqual(["space", "membership", "invitation"]);
+    expect(database.lockOrder["accept-b"]).toEqual(["space", "membership", "invitation"]);
   });
 });
