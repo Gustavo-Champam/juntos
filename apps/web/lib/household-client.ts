@@ -26,4 +26,5 @@ export const household = {
   createAgenda: (event: Record<string, unknown>) => post("agenda.create", { event }),
   deleteAgenda: (id: string, expectedVersion: number) =>
     post("agenda.delete", { id, expectedVersion, confirmed: true }),
+  assistant: (command: string) => post("assistant.run", { command }),
 };

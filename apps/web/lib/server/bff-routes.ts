@@ -190,6 +190,7 @@ const householdOps: Record<string, string> = {
   "agenda.list": "/internal/agenda/list",
   "agenda.create": "/internal/agenda/create",
   "agenda.delete": "/internal/agenda/delete",
+  "assistant.run": "/internal/assistant/run",
 };
 
 export async function householdProxy(request: Request) {

@@ -4,6 +4,8 @@ import {
   HouseholdInputError,
   type HouseholdService,
 } from "../household/household-service.js";
+import { AssistantService } from "../household/assistant.js";
+import type { AgendaService } from "../agenda/agenda-service.js";
 import { SharedDataError } from "../spaces/member-transaction.js";
 import {
   authenticateSession,
@@ -13,6 +15,7 @@ import {
 
 export type HouseholdRouteDependencies = InternalRouteDependencies & {
   householdService: HouseholdService;
+  agendaService?: AgendaService;
 };
 
 function statusOf(error: unknown): number {
@@ -169,6 +172,22 @@ const internalHouseholdRoutes: FastifyPluginAsync<HouseholdRouteDependencies> = 
     if (!authenticated) return;
     const body = (request.body ?? {}) as { mealType?: "breakfast" | "lunch" | "dinner" };
     await reply.send(await dependencies.householdService.catalog(body.mealType));
+  });
+
+  app.post("/assistant/run", async (request, reply) => {
+    const authenticated = await withUser(request, reply);
+    if (!authenticated) return;
+    if (!dependencies.agendaService) {
+      await sendRequestFailure(request, reply, 502);
+      return;
+    }
+    const body = (request.body ?? {}) as { command?: string };
+    try {
+      const assistant = new AssistantService(dependencies.householdService, dependencies.agendaService);
+      await reply.send(await assistant.run(authenticated.user.id, String(body.command ?? "")));
+    } catch (error) {
+      await sendRequestFailure(request, reply, statusOf(error));
+    }
   });
 };
 

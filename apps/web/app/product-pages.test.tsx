@@ -60,6 +60,17 @@ describe("product pages", () => {
     expect(screen.getByRole("button", { name: /Pedir sugestão da IA neste horário/i })).toBeInTheDocument();
   });
 
+  it("offers a spoken assistant to write agenda and meals", async () => {
+    const { default: AssistantPage } = await import(
+      /* @vite-ignore */ pageUrl("app/pedir/page.tsx")
+    );
+
+    render(await AssistantPage());
+    expect(screen.getByRole("heading", { name: "Pedir à IA" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fazer isso" })).toBeInTheDocument();
+    expect(screen.getByLabelText("O que vocês querem organizar?")).toBeInTheDocument();
+  });
+
   it("shows the live shopping list with AI suggestions", async () => {
     const { default: ShoppingPage } = await import(
       /* @vite-ignore */ pageUrl("app/compras/page.tsx")
@@ -78,6 +89,7 @@ describe("product pages", () => {
       (await import(/* @vite-ignore */ pageUrl("app/agenda/page.tsx"))).default,
       (await import(/* @vite-ignore */ pageUrl("app/comidas/page.tsx"))).default,
       (await import(/* @vite-ignore */ pageUrl("app/compras/page.tsx"))).default,
+      (await import(/* @vite-ignore */ pageUrl("app/pedir/page.tsx"))).default,
     ];
 
     for (const Page of pages) {

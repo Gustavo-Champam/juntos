@@ -22,12 +22,14 @@ describe("AppShell", () => {
       "Agenda",
       "Comidas",
       "Compras",
+      "Pedir",
     ]);
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "/",
       "/agenda",
       "/comidas",
       "/compras",
+      "/pedir",
     ]);
   });
 

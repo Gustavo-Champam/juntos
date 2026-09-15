@@ -972,7 +972,7 @@ a:focus-visible {
     width: auto;
     height: calc(74px + env(safe-area-inset-bottom));
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 2px;
     padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--line-strong);
@@ -1467,6 +1467,92 @@ a:focus-visible {
 .add-choices button {
   justify-content: center;
   text-decoration: none;
+}
+
+.assistant-form {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 28px;
+}
+
+.assistant-form label {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.assistant-form textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.assistant-form .identity-action {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assistant-result {
+  margin: 0 0 28px;
+  padding: 18px 18px 14px;
+  border: 1px solid var(--sage-soft);
+  border-radius: 18px;
+  background: var(--sage-soft);
+}
+
+.assistant-result p:last-of-type {
+  margin: 6px 0 12px;
+  font-size: 1.05rem;
+}
+
+.assistant-result ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-result li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.assistant-examples h2 {
+  margin: 0 0 12px;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 590;
+}
+
+.assistant-examples ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.example-chip {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
 }
 
 @media (min-width: 720px) {

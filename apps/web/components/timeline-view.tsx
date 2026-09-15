@@ -197,7 +197,8 @@ export function TimelineView({
             <h2 id="add-title">O que vocês querem acrescentar?</h2>
             <p className="picker-lead">A rotina junta compromissos e refeições do mesmo dia.</p>
             <div className="add-choices">
-              <Link className="identity-action" href="/agenda">Compromisso na agenda</Link>
+              <Link className="identity-action" href="/pedir">Pedir à IA</Link>
+              <Link className="quiet-button" href="/agenda">Compromisso na agenda</Link>
               <Link className="quiet-button" href="/comidas">Refeição no cardápio</Link>
               <button className="quiet-button" type="button" onClick={() => setAdding(false)}>Agora não</button>
             </div>
