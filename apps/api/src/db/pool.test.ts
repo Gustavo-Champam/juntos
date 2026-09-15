@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createPool } from "./pool.js";
 
 describe("createPool", () => {
-  it("verifies the PostgreSQL server certificate when TLS is enabled", async () => {
+  it("enables TLS for Render Postgres without requiring a public CA", async () => {
     const pool = createPool("postgres://juntos:juntos@db.example.com:5432/juntos", true);
 
-    expect(pool.options.ssl).toBe(true);
+    expect(pool.options.ssl).toEqual({ rejectUnauthorized: false });
 
     await pool.end();
   });
@@ -34,7 +34,7 @@ describe("createPool", () => {
     const pool = createPool(databaseUrl, true);
 
     expect(pool.options.connectionString).toBe(databaseUrl);
-    expect(pool.options.ssl).toBe(true);
+    expect(pool.options.ssl).toEqual({ rejectUnauthorized: false });
 
     await pool.end();
   });
