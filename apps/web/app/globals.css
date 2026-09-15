@@ -1163,3 +1163,135 @@ a:focus-visible {
     animation-iteration-count: 1 !important;
   }
 }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 18px;
+}
+
+.toolbar-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.suggestion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 8px 0 22px;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestion-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 16px 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.suggestion-card h3 {
+  margin: 6px 0 0;
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 1.22rem;
+  font-weight: 590;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.suggestion-match {
+  margin: 12px 0 0;
+  color: var(--sage-deep);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.suggestion-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.suggestion-actions .identity-action,
+.suggestion-actions .quiet-button {
+  margin-top: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.ai-ask {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+
+.ai-ask label {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ai-ask-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.ai-ask-row input {
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.picker-sheet {
+  margin-top: 24px;
+  padding: 18px 0 8px;
+  border-top: 1px solid var(--line);
+}
+
+.identity-form select {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+@media (max-width: 720px) {
+  .suggestion-grid,
+  .ai-ask-row {
+    grid-template-columns: 1fr;
+  }
+}
+

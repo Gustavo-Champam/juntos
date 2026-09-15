@@ -12,12 +12,17 @@ import {
 import { PostgresIdentityStore } from "./identity/postgres-identity-store.js";
 import { SessionService } from "./identity/session-service.js";
 import { SpaceService } from "./spaces/space-service.js";
+import { AgendaService } from "./agenda/agenda-service.js";
+import { PostgresAgendaStore } from "./agenda/postgres-agenda-store.js";
+import { HouseholdService } from "./household/household-service.js";
 
 const config = parseConfig(process.env);
 const pool = createPool(config.databaseUrl, config.databaseSsl);
 const store = new PostgresIdentityStore(pool);
 const sessionService = new SessionService(store);
 const spaceService = new SpaceService(store);
+const agendaService = new AgendaService(new PostgresAgendaStore(pool));
+const householdService = new HouseholdService(pool);
 const oauthClient = new OAuth2Client({
   clientId: config.googleClientId,
   clientSecret: config.googleClientSecret,
@@ -38,6 +43,8 @@ const app = buildApp({
     googleIdentity,
     sessionService,
     spaceService,
+    agendaService,
+    householdService,
   },
 });
 

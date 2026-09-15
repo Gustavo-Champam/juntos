@@ -1,4 +1,4 @@
-export type CoupleMember = "Gustavo" | "Amor" | "Ambos";
+export type CoupleMember = string;
 
 export type CalendarEvent = {
   id: string;

@@ -1,9 +1,8 @@
-import { redirect } from "next/navigation";
-
 import { AppShell } from "@/components/app-shell";
 import { BootstrapUnavailable } from "@/components/bootstrap-unavailable";
-import { ShoppingContent } from "@/components/shopping-content";
+import { ShoppingBoard } from "@/components/shopping-board";
 import { getBootstrap } from "@/lib/server/bootstrap";
+import { redirect } from "next/navigation";
 
 export default async function ShoppingPage() {
   const state = await getBootstrap();
@@ -13,7 +12,7 @@ export default async function ShoppingPage() {
 
   return (
     <AppShell currentPath="/compras" user={state.bootstrap.user} space={state.bootstrap.space}>
-      <ShoppingContent />
+      <ShoppingBoard />
     </AppShell>
   );
 }

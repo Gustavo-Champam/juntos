@@ -9,6 +9,8 @@ import internalAuthRoutes, {
   logRequestFailure,
   type InternalRouteDependencies,
 } from "./routes/internal-auth.js";
+import internalAgendaRoutes from "./routes/internal-agenda.js";
+import internalHouseholdRoutes from "./routes/internal-household.js";
 import internalSpacesRoutes from "./routes/internal-spaces.js";
 import {
   buildInternalRequestGuard,
@@ -17,6 +19,8 @@ import {
 
 type IdentityAppDependencies = InternalRouteDependencies & {
   internalProxyKey: string;
+  agendaService?: import("./agenda/agenda-service.js").AgendaService;
+  householdService?: import("./household/household-service.js").HouseholdService;
 };
 
 type BuildAppOptions = {
@@ -80,6 +84,16 @@ export function buildApp(options: BuildAppOptions) {
         });
         await internal.register(internalAuthRoutes, dependencies);
         await internal.register(internalSpacesRoutes, dependencies);
+        if (dependencies.agendaService) {
+          await internal.register(internalAgendaRoutes, dependencies as IdentityAppDependencies & {
+            agendaService: NonNullable<IdentityAppDependencies["agendaService"]>;
+          });
+        }
+        if (dependencies.householdService) {
+          await internal.register(internalHouseholdRoutes, dependencies as IdentityAppDependencies & {
+            householdService: NonNullable<IdentityAppDependencies["householdService"]>;
+          });
+        }
         internal.setNotFoundHandler(async (request, reply) => {
           reply.header("Cache-Control", "no-store");
           logRequestFailure(request, 404);

@@ -1,14 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getBootstrap, redirect } = vi.hoisted(() => ({
+const { getBootstrap, redirect, loadHomeDay } = vi.hoisted(() => ({
   getBootstrap: vi.fn(),
   redirect: vi.fn((destination: string) => { throw new Error(`redirect:${destination}`); }),
+  loadHomeDay: vi.fn(),
 }));
 vi.mock("@/lib/server/bootstrap", () => ({ getBootstrap }));
+vi.mock("@/lib/server/live-data", () => ({ loadHomeDay }));
 vi.mock("next/navigation", () => ({ redirect }));
 
 import Home from "./page";
+import { demoDate, demoEvents, demoMeals } from "@/features/timeline/demo-data";
 
 const user = { id: "u1", email: "ana@example.com", name: "Ana", avatarUrl: null };
 
@@ -27,6 +30,7 @@ describe("home route gate", () => {
 
   it("renders the chronological home only for a ready member", async () => {
     getBootstrap.mockResolvedValue({ status: "ready", bootstrap: { user, space: { id: "s1", name: "Nosso canto", memberCount: 1 } } });
+    loadHomeDay.mockResolvedValue({ date: demoDate, events: demoEvents, meals: demoMeals });
     render(await Home());
     expect(screen.getByRole("list", { name: "Rotina do dia" })).toBeInTheDocument();
   });

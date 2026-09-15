@@ -34,9 +34,11 @@ describe("applyMigrations", () => {
       "agenda_state",
       "couple_spaces",
       "invitations",
+      "meal_plans",
       "memberships",
       "schema_migrations",
       "sessions",
+      "shopping_items",
       "users",
     ]);
 
@@ -67,6 +69,7 @@ describe("applyMigrations", () => {
     expect(applied.rows).toEqual([
       { filename: "0001_identity.sql" },
       { filename: "0002_agenda.sql" },
+      { filename: "0003_meals_shopping.sql" },
     ]);
   });
 });

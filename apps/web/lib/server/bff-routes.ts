@@ -174,3 +174,44 @@ export async function logout(request: Request) {
   result.headers.set("Clear-Site-Data", '"cache", "cookies", "storage"');
   return result;
 }
+
+const householdOps: Record<string, string> = {
+  "meals.list": "/internal/meals/list",
+  "meals.save": "/internal/meals/save",
+  "meals.clear": "/internal/meals/clear",
+  "shopping.list": "/internal/shopping/list",
+  "shopping.add": "/internal/shopping/add",
+  "shopping.toggle": "/internal/shopping/toggle",
+  "shopping.remove": "/internal/shopping/remove",
+  "shopping.fromRecipe": "/internal/shopping/from-recipe",
+  "recipes.suggest": "/internal/recipes/suggest",
+  "recipes.ai": "/internal/recipes/ai",
+  "recipes.catalog": "/internal/recipes/catalog",
+  "agenda.list": "/internal/agenda/list",
+  "agenda.create": "/internal/agenda/create",
+  "agenda.delete": "/internal/agenda/delete",
+};
+
+export async function householdProxy(request: Request) {
+  try {
+    assertSameOrigin(request);
+    const session = sessionFrom(await cookies());
+    const payload = (await request.json()) as { op?: string } & Record<string, unknown>;
+    const path = householdOps[typeof payload.op === "string" ? payload.op : ""];
+    if (!path) throw new RequestFailure(400);
+    const { op: _op, ...body } = payload;
+    const response = await backendFetch(
+      path,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      session,
+    );
+    if (!response.ok) throw new RequestFailure(response.status >= 400 && response.status < 500 ? response.status : 502);
+    return new Response(await response.text(), {
+      status: 200,
+      headers: { ...privateHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    return failure(error);
+  }
+}
+
