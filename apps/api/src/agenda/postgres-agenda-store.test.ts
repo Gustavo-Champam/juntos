@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 
+import type { Database } from "../db/pool.js";
 import { createAgendaTestDatabase } from "./test-database.js";
 import { PostgresAgendaStore } from "./postgres-agenda-store.js";
 
@@ -30,7 +32,59 @@ function createStore(pool: Awaited<ReturnType<typeof createAgendaTestDatabase>>[
   });
 }
 
+function databaseReturningDateObjectsForUntypedDates(pool: Pool, date: Date, recurrenceUntil: Date): Database {
+  return {
+    query: pool.query.bind(pool),
+    async connect() {
+      const client = await pool.connect();
+      return {
+        release: () => client.release(),
+        query: async <T extends QueryResultRow>(statement: string, values?: unknown[]): Promise<QueryResult<T>> => {
+          const result = await client.query<T>(statement, values);
+          const sql = statement.toLowerCase();
+          if (sql.includes("from agenda_events")) {
+            for (const row of result.rows as Array<Record<string, unknown>>) {
+              row.date = date;
+              row.recurrence_until = recurrenceUntil;
+            }
+          }
+          return result;
+        },
+      } as PoolClient;
+    },
+  };
+}
+
 describe("PostgresAgendaStore", () => {
+  it("preserves date and recurrence-until when a PostgreSQL date would cross the UTC day", async () => {
+    const f = await createAgendaTestDatabase();
+    const originalTimezone = process.env.TZ;
+    try {
+      const created = await createStore(f.pool).create(f.anaId, {
+        event: { ...event, date: "2026-09-07", recurrence: { frequency: "weekly", until: "2026-09-14" } },
+      });
+      process.env.TZ = "Etc/GMT-3";
+      const pgDate = new Date(2026, 8, 7);
+      const pgRecurrenceUntil = new Date(2026, 8, 14);
+      expect(pgDate.toISOString().slice(0, 10)).toBe("2026-09-06");
+      expect(pgRecurrenceUntil.toISOString().slice(0, 10)).toBe("2026-09-13");
+      const store = new PostgresAgendaStore(
+        databaseReturningDateObjectsForUntypedDates(f.pool, pgDate, pgRecurrenceUntil),
+      );
+
+      const saved = (await store.read(f.anaId)).events[0];
+      expect(saved).toMatchObject({
+        id: created.id,
+        date: "2026-09-07",
+        recurrence: { frequency: "weekly", until: "2026-09-14" },
+      });
+    } finally {
+      if (originalTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimezone;
+      await f.pool.end();
+    }
+  });
+
   it("creates a server-authored event and exposes only current public members", async () => {
     const f = await createAgendaTestDatabase();
     try {

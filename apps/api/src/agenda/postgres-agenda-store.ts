@@ -7,6 +7,7 @@ import type {
   SpaceMember,
   UpdateAgendaRequest,
 } from "@juntos/contracts";
+import { parseCivilDate } from "@juntos/contracts";
 import type { PoolClient } from "pg";
 
 import type { Database } from "../db/pool.js";
@@ -42,8 +43,12 @@ const EVENT_COLUMNS = `id, space_id, title, date, time, duration_minutes, locati
   assignee_id, weekly, recurrence_until, version, created_by, updated_by, created_at, updated_at, deleted_at`;
 
 function civilDate(value: Date | string): string {
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return value.slice(0, 10);
+  if (typeof value === "string") return parseCivilDate(value);
+  if (Number.isNaN(value.getTime())) throw new Error("invalid agenda date row");
+  const year = value.getFullYear().toString().padStart(4, "0");
+  const month = (value.getMonth() + 1).toString().padStart(2, "0");
+  const day = value.getDate().toString().padStart(2, "0");
+  return parseCivilDate(`${year}-${month}-${day}`);
 }
 
 function timestamp(value: Date | string): string {
