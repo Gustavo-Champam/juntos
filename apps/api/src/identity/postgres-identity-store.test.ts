@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { applyMigrations } from "../db/migration-runner.js";
 import type { Database } from "../db/pool.js";
 import { hashOpaqueToken } from "../security/tokens.js";
+import { withMemberTransaction } from "../spaces/member-transaction.js";
 import { PostgresIdentityStore } from "./postgres-identity-store.js";
 
 const migrationsDirectory = fileURLToPath(new URL("../../migrations", import.meta.url));
@@ -19,70 +20,100 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve: () => resolve?.() };
 }
 
-class InvitationLockDatabase {
-  readonly invitationLocked = deferred();
-  readonly creationBlocked = deferred();
-  readonly allowAcceptance = deferred();
-  private readonly invitationReleased = deferred();
+type TransactionRole = "accept" | "create" | "agenda" | "leave";
+
+class GlobalLockOrderDatabase {
+  readonly lockOrder: Record<TransactionRole, string[]> = {
+    accept: [],
+    create: [],
+    agenda: [],
+    leave: [],
+  };
   private readonly spaceReleased = deferred();
-  private invitationOwner: "accept" | "create" | null = null;
-  private spaceOwner: "accept" | "create" | null = null;
+  private connectionIndex = 0;
+  private spaceOwner: TransactionRole | null = null;
+
+  constructor(private readonly roles: TransactionRole[]) {}
 
   async connect() {
-    let role: "accept" | "create" | null = null;
+    const role = this.roles[this.connectionIndex++];
+    if (!role) throw new Error("unexpected transaction");
     return {
       query: async <T>(statement: string) => {
         const sql = statement.replace(/\s+/g, " ").trim().toLowerCase();
-        if (sql === "begin" || sql === "rollback") return { rows: [] } as { rows: T[] };
-        if (sql === "commit") {
-          if (this.invitationOwner === role) {
-            this.invitationOwner = null;
-            this.invitationReleased.resolve();
-          }
+        if (sql === "begin") return { rows: [] } as { rows: T[] };
+        if (sql === "commit" || sql === "rollback") {
           if (this.spaceOwner === role) {
             this.spaceOwner = null;
             this.spaceReleased.resolve();
           }
           return { rows: [] } as { rows: T[] };
         }
-        if (sql.includes("from invitations") && sql.includes("for update")) {
-          role = "accept";
-          this.invitationOwner = role;
-          this.invitationLocked.resolve();
-          await this.allowAcceptance.promise;
-          return { rows: [{ id: "invite", space_id: "space", invited_email: null, expires_at: new Date("2026-10-01T00:00:00.000Z"), accepted_at: null, revoked_at: null }] } as { rows: T[] };
-        }
-        if (sql.includes("from memberships") && sql.includes("user_id = $1 for update")) {
-          role = "create";
-          return { rows: [{ space_id: "space" }] } as { rows: T[] };
-        }
-        if (sql.startsWith("update invitations set revoked_at")) {
-          role = "create";
-          if (this.invitationOwner === "accept") {
-            this.creationBlocked.resolve();
-            if (this.spaceOwner === "create") throw new Error("deadlock detected");
-            await this.invitationReleased.promise;
-          }
-          this.invitationOwner = role;
-          return { rows: [] } as { rows: T[] };
-        }
         if (sql.includes("from couple_spaces") && sql.includes("for update")) {
-          if (role === "create") this.creationBlocked.resolve();
-          if (this.spaceOwner === "create" && role === "accept") await this.spaceReleased.promise;
-          this.spaceOwner = role;
+          await this.lockSpace(role);
           return { rows: [{ id: "space", name: "Casa", archived_at: null }] } as { rows: T[] };
         }
-        if (sql.startsWith("select count(*)")) return { rows: [{ member_count: 1 }] } as { rows: T[] };
+        if (sql.includes("from memberships") && !sql.includes("for update")) {
+          if (role === "accept") return { rows: [] } as { rows: T[] };
+          return { rows: [{ space_id: "space", role: "owner" }] } as { rows: T[] };
+        }
+        if (sql.includes("from invitations") && !sql.includes("for update")) {
+          if (role !== "accept") throw new Error("only acceptance discovers an invitation");
+          return { rows: [{ id: "invite", space_id: "space" }] } as { rows: T[] };
+        }
+        if (sql.includes("from memberships") && sql.includes("for update")) {
+          this.lockRelated(role, "membership");
+          if (sql.includes("where space_id = $1")) {
+            return { rows: [{ user_id: "ana", role: "owner" }] } as { rows: T[] };
+          }
+          if (role === "accept") return { rows: [] } as { rows: T[] };
+          return { rows: [{ space_id: "space", role: "owner" }] } as { rows: T[] };
+        }
+        if (sql.includes("from invitations") && sql.includes("for update")) {
+          this.lockRelated(role, "invitation");
+          return { rows: [{ id: "invite", space_id: "space", invited_email: null, expires_at: new Date("2026-10-01T00:00:00.000Z"), accepted_at: null, revoked_at: null }] } as { rows: T[] };
+        }
+        if (sql.startsWith("update invitations set revoked_at")) {
+          this.lockRelated(role, "invitation");
+          return { rows: [] } as { rows: T[] };
+        }
         if (sql.startsWith("select email from users")) return { rows: [{ email: "bia@example.com" }] } as { rows: T[] };
-        if (sql.startsWith("select space_id from memberships")) return { rows: [] } as { rows: T[] };
-        return { rows: [] } as { rows: T[] };
+        if (sql.startsWith("insert into invitations") || sql.startsWith("update invitations set accepted_by")) {
+          this.requireSpace(role);
+          return { rows: [] } as { rows: T[] };
+        }
+        if (sql.startsWith("insert into memberships") || sql.startsWith("delete from memberships") || sql.startsWith("update memberships set role") || sql.startsWith("update couple_spaces set archived_at")) {
+          this.requireSpace(role);
+          return { rows: [] } as { rows: T[] };
+        }
+        if (sql.startsWith("insert into agenda_state") || sql.includes("from agenda_state")) {
+          this.requireSpace(role);
+          return { rows: [{ revision: 0 }] } as { rows: T[] };
+        }
+        throw new Error(`unexpected query for ${role}: ${sql}`);
       },
       release: () => undefined,
     };
   }
 
-  async query() {
-    throw new Error("root queries are not used in this transaction test");
+  async query(): Promise<never> {
+    throw new Error("root queries are not used in lock-order tests");
+  }
+
+  private async lockSpace(role: TransactionRole): Promise<void> {
+    if (this.spaceOwner && this.spaceOwner !== role) await this.spaceReleased.promise;
+    this.spaceOwner = role;
+    this.lockOrder[role].push("space");
+    await Promise.resolve();
+  }
+
+  private lockRelated(role: TransactionRole, kind: "membership" | "invitation"): void {
+    this.requireSpace(role);
+    this.lockOrder[role].push(kind);
+  }
+
+  private requireSpace(role: TransactionRole): void {
+    if (this.spaceOwner !== role) throw new Error(`${role} must lock the space first`);
   }
 }
 
@@ -190,17 +221,27 @@ describe("PostgresIdentityStore", () => {
     expect((await pool.query("SELECT revoked_at FROM invitations WHERE token_hash = $1", [firstHash])).rows[0]).toEqual({ revoked_at: new Date("2026-09-05T00:00:00.000Z") });
   });
 
-  it("serializes accepting and replacing an invitation without a lock cycle", async () => {
-    const database = new InvitationLockDatabase();
+  it("serializes accepting and replacing an invitation with global space-first locks", async () => {
+    const database = new GlobalLockOrderDatabase(["accept", "create"]);
     const store = new PostgresIdentityStore(database as unknown as Database);
     const acceptedAt = new Date("2026-09-05T00:00:00.000Z");
     const accepting = store.acceptInvitation(biaId, hashOpaqueToken("a".repeat(43)), acceptedAt);
-
-    await database.invitationLocked.promise;
     const replacing = store.createInvitation(anaId, hashOpaqueToken("b".repeat(43)), undefined, new Date("2026-09-12T00:00:00.000Z"), acceptedAt);
-    await database.creationBlocked.promise;
-    database.allowAcceptance.resolve();
 
     await expect(Promise.all([accepting, replacing])).resolves.toEqual([undefined, undefined]);
+    expect(database.lockOrder.accept).toEqual(["space", "membership", "membership", "invitation"]);
+    expect(database.lockOrder.create).toEqual(["space", "membership", "invitation"]);
+  });
+
+  it("serializes leave and agenda work with space-first membership locks", async () => {
+    const database = new GlobalLockOrderDatabase(["agenda", "leave"]);
+    const store = new PostgresIdentityStore(database as unknown as Database);
+
+    const agenda = withMemberTransaction(database as unknown as Database, anaId, async () => "written");
+    const leaving = store.leaveSpace(anaId, new Date("2026-09-05T00:00:00.000Z"));
+
+    await expect(Promise.all([agenda, leaving])).resolves.toEqual(["written", undefined]);
+    expect(database.lockOrder.agenda).toEqual(["space", "membership"]);
+    expect(database.lockOrder.leave).toEqual(["space", "membership", "membership"]);
   });
 });

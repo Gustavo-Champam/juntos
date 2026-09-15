@@ -10,6 +10,7 @@ type StoreDependencies = { generateId?: () => string };
 
 type UserRow = { id: string; email: string; name: string; avatar_url: string | null };
 type InvitationRow = { id: string; space_id: string; invited_email: string | null; expires_at: Date; accepted_at: Date | null; revoked_at: Date | null };
+type InvitationTargetRow = Pick<InvitationRow, "id" | "space_id">;
 type SpaceRow = { id: string; name: string; archived_at: Date | null };
 
 function publicUser(row: UserRow): PublicUser {
@@ -92,16 +93,24 @@ export class PostgresIdentityStore implements IdentityStore {
 
   async createInvitation(userId: string, tokenHash: Buffer, invitedEmail: string | undefined, expiresAt: Date, createdAt: Date): Promise<void> {
     await this.inTransaction(async (client) => {
-      const membership = await client.query<{ space_id: string }>("SELECT space_id FROM memberships WHERE user_id = $1 FOR UPDATE", [userId]);
+      const membership = await client.query<{ space_id: string }>("SELECT space_id FROM memberships WHERE user_id = $1", [userId]);
       const spaceId = membership.rows[0]?.space_id;
       if (!spaceId) throw new Error("user does not belong to a space");
+      const space = await client.query<SpaceRow>(
+        "SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 AND archived_at IS NULL FOR UPDATE",
+        [spaceId],
+      );
+      if (!space.rows[0]) throw new Error("space is unavailable");
+      const activeMembership = await client.query<{ space_id: string }>(
+        "SELECT space_id FROM memberships WHERE user_id = $1 AND space_id = $2 FOR UPDATE",
+        [userId, spaceId],
+      );
+      if (!activeMembership.rows[0]) throw new Error("user does not belong to a space");
       await client.query(
         `UPDATE invitations SET revoked_at = $2
          WHERE space_id = $1 AND accepted_at IS NULL AND revoked_at IS NULL`,
         [spaceId, createdAt],
       );
-      const space = await client.query<SpaceRow>("SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 FOR UPDATE", [spaceId]);
-      if (!space.rows[0] || space.rows[0].archived_at) throw new Error("space is unavailable");
       await client.query(
         `INSERT INTO invitations (id, space_id, created_by, invited_email, token_hash, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -112,33 +121,45 @@ export class PostgresIdentityStore implements IdentityStore {
 
   async acceptInvitation(userId: string, tokenHash: Buffer, acceptedAt: Date): Promise<void> {
     await this.inTransaction(async (client) => {
-      const invitation = await client.query<InvitationRow>(
-        `SELECT id, space_id, invited_email, expires_at, accepted_at, revoked_at
+      const invitation = await client.query<InvitationTargetRow>(
+        `SELECT id, space_id
          FROM invitations
-         WHERE token_hash = $1
-         FOR UPDATE`,
+         WHERE token_hash = $1`,
         [tokenHash],
       );
-      const invite = invitation.rows[0];
-      if (!invite || invite.accepted_at || invite.revoked_at || invite.expires_at <= acceptedAt) throw new Error("invitation is unavailable");
+      const invitationTarget = invitation.rows[0];
+      if (!invitationTarget) throw new Error("invitation is unavailable");
 
       const space = await client.query<SpaceRow>(
-        "SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 FOR UPDATE",
-        [invite.space_id],
+        "SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 AND archived_at IS NULL FOR UPDATE",
+        [invitationTarget.space_id],
       );
-      if (!space.rows[0] || space.rows[0].archived_at) throw new Error("space is unavailable");
+      if (!space.rows[0]) throw new Error("space is unavailable");
 
-      const count = await client.query<{ member_count: number }>(
-        "SELECT count(*)::int AS member_count FROM memberships WHERE space_id = $1",
-        [invite.space_id],
+      const members = await client.query<{ user_id: string }>(
+        "SELECT user_id FROM memberships WHERE space_id = $1 FOR UPDATE",
+        [invitationTarget.space_id],
       );
-      if ((count.rows[0]?.member_count ?? 0) >= 2) throw new Error("space is full");
+      const currentMembership = await client.query<{ space_id: string }>(
+        "SELECT space_id FROM memberships WHERE user_id = $1 FOR UPDATE",
+        [userId],
+      );
+
+      const lockedInvitation = await client.query<InvitationRow>(
+        `SELECT id, space_id, invited_email, expires_at, accepted_at, revoked_at
+         FROM invitations
+         WHERE token_hash = $1 AND space_id = $2
+         FOR UPDATE`,
+        [tokenHash, invitationTarget.space_id],
+      );
+      const invite = lockedInvitation.rows[0];
+      if (!invite || invite.accepted_at || invite.revoked_at || invite.expires_at <= acceptedAt) throw new Error("invitation is unavailable");
+      if (members.rows.length >= 2) throw new Error("space is full");
 
       const user = await client.query<{ email: string }>("SELECT email FROM users WHERE id = $1", [userId]);
       const email = user.rows[0]?.email;
       if (!email) throw new Error("user not found");
       if (invite.invited_email && invite.invited_email !== email) throw new Error("invitation email does not match");
-      const currentMembership = await client.query<{ space_id: string }>("SELECT space_id FROM memberships WHERE user_id = $1", [userId]);
       if (currentMembership.rows[0]) throw new Error("user already belongs to a space");
 
       await client.query(
@@ -155,13 +176,22 @@ export class PostgresIdentityStore implements IdentityStore {
   async leaveSpace(userId: string, leftAt: Date): Promise<void> {
     await this.inTransaction(async (client) => {
       const membership = await client.query<{ space_id: string; role: "owner" | "partner" }>(
-        "SELECT space_id, role FROM memberships WHERE user_id = $1 FOR UPDATE",
+        "SELECT space_id, role FROM memberships WHERE user_id = $1",
         [userId],
       );
-      const current = membership.rows[0];
+      const membershipTarget = membership.rows[0];
+      if (!membershipTarget) throw new Error("user does not belong to a space");
+      const space = await client.query<SpaceRow>(
+        "SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 AND archived_at IS NULL FOR UPDATE",
+        [membershipTarget.space_id],
+      );
+      if (!space.rows[0]) throw new Error("space is unavailable");
+      const activeMembership = await client.query<{ space_id: string; role: "owner" | "partner" }>(
+        "SELECT space_id, role FROM memberships WHERE user_id = $1 AND space_id = $2 FOR UPDATE",
+        [userId, membershipTarget.space_id],
+      );
+      const current = activeMembership.rows[0];
       if (!current) throw new Error("user does not belong to a space");
-      const space = await client.query<SpaceRow>("SELECT id, name, archived_at FROM couple_spaces WHERE id = $1 FOR UPDATE", [current.space_id]);
-      if (!space.rows[0] || space.rows[0].archived_at) throw new Error("space is unavailable");
       const members = await client.query<{ user_id: string; role: "owner" | "partner" }>(
         "SELECT user_id, role FROM memberships WHERE space_id = $1 FOR UPDATE",
         [current.space_id],

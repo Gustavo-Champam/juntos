@@ -67,6 +67,41 @@ class SpaceFirstLockDatabase {
   }
 }
 
+class AuthorizationDatabase {
+  rolledBack = false;
+  released = false;
+
+  constructor(
+    private readonly membership: string | null,
+    private readonly spaceExists: boolean,
+  ) {}
+
+  async connect() {
+    return {
+      query: async <T>(statement: string) => {
+        const sql = statement.replace(/\s+/g, " ").trim().toLowerCase();
+        if (sql === "begin" || sql === "commit") return { rows: [] } as { rows: T[] };
+        if (sql === "rollback") {
+          this.rolledBack = true;
+          return { rows: [] } as { rows: T[] };
+        }
+        if (sql.includes("from memberships") && !sql.includes("for update")) {
+          return { rows: this.membership ? [{ space_id: this.membership }] : [] } as { rows: T[] };
+        }
+        if (sql.includes("from couple_spaces") && sql.includes("for update")) {
+          return { rows: this.spaceExists ? [{ id: this.membership }] : [] } as { rows: T[] };
+        }
+        throw new Error(`unexpected query: ${sql}`);
+      },
+      release: () => { this.released = true; },
+    };
+  }
+
+  async query(): Promise<never> {
+    throw new Error("root queries are not used in member transactions");
+  }
+}
+
 describe("withMemberTransaction", () => {
   it("locks the space before rechecking membership and exposes only its trusted id", async () => {
     const database = new SpaceFirstLockDatabase();
@@ -102,6 +137,24 @@ describe("withMemberTransaction", () => {
     } finally {
       await pool.end();
     }
+  });
+
+  it("rejects a user with no membership with 403", async () => {
+    const database = new AuthorizationDatabase(null, false);
+
+    await expect(withMemberTransaction(database as unknown as Database, "member", async () => "private"))
+      .rejects.toMatchObject({ status: 403 });
+    expect(database.rolledBack).toBe(true);
+    expect(database.released).toBe(true);
+  });
+
+  it.each(["absent", "archived"])("rejects an %s space with 403", async () => {
+    const database = new AuthorizationDatabase("space", false);
+
+    await expect(withMemberTransaction(database as unknown as Database, "member", async () => "private"))
+      .rejects.toMatchObject({ status: 403 });
+    expect(database.rolledBack).toBe(true);
+    expect(database.released).toBe(true);
   });
 
   it("rolls back callback work and releases the client when the callback fails", async () => {
