@@ -189,7 +189,10 @@ const householdOps: Record<string, string> = {
   "recipes.catalog": "/internal/recipes/catalog",
   "agenda.list": "/internal/agenda/list",
   "agenda.create": "/internal/agenda/create",
+  "agenda.update": "/internal/agenda/update",
   "agenda.delete": "/internal/agenda/delete",
+  "prefs.get": "/internal/prefs/get",
+  "prefs.save": "/internal/prefs/save",
   "assistant.run": "/internal/assistant/run",
 };
 

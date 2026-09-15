@@ -17,6 +17,7 @@ type PlannedMeal = {
   title: string;
   prepMinutes: number;
   quick: boolean;
+  time?: string;
 };
 
 const SLOTS: MealType[] = ["breakfast", "lunch", "dinner"];
@@ -28,6 +29,7 @@ export function MealsPlanner() {
   const [picking, setPicking] = useState<{ date: string; mealType: MealType } | null>(null);
   const [error, setError] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [prefs, setPrefs] = useState({ breakfast: "07:15", lunch: "12:30", dinner: "19:00" });
   const weekEnd = addCivilDays(weekStart, 6);
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addCivilDays(weekStart, index)), [weekStart]);
 
@@ -45,22 +47,43 @@ export function MealsPlanner() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void household.prefs().then((data) => setPrefs(data as typeof prefs)).catch(() => undefined);
+  }, []);
+
   const bySlot = useMemo(() => {
     const map = new Map<string, PlannedMeal>();
     for (const meal of meals) map.set(`${meal.date}:${meal.mealType}`, meal);
     return map;
   }, [meals]);
 
-  async function saveRecipe(date: string, mealType: MealType, recipe: Recipe) {
-    await household.saveMeal({ date, mealType, recipeId: recipe.id, weekStart });
+  async function saveRecipe(date: string, mealType: MealType, recipe: Recipe, time?: string) {
+    await household.saveMeal({ date, mealType, recipeId: recipe.id, weekStart, time: time || prefs[mealType] });
     setPicking(null);
     await load();
   }
 
-  async function saveCustom(date: string, mealType: MealType, title: string) {
-    await household.saveMeal({ date, mealType, title, weekStart });
+  async function saveCustom(date: string, mealType: MealType, title: string, time?: string) {
+    await household.saveMeal({ date, mealType, title, weekStart, time: time || prefs[mealType] });
     setPicking(null);
     await load();
+  }
+
+  async function saveTime(date: string, mealType: MealType, meal: PlannedMeal, time: string) {
+    await household.saveMeal({
+      date,
+      mealType,
+      recipeId: meal.recipeId,
+      title: meal.title,
+      weekStart,
+      time,
+    });
+    await load();
+  }
+
+  function persistPrefs(next: typeof prefs) {
+    setPrefs(next);
+    void household.savePrefs(next);
   }
 
   async function clear(date: string, mealType: MealType) {
@@ -126,6 +149,27 @@ export function MealsPlanner() {
         </p>
       </div>
 
+      <form
+        className="times-row"
+        aria-label="Horários das refeições"
+        onSubmit={(event) => {
+          event.preventDefault();
+          persistPrefs(prefs);
+        }}
+      >
+        {SLOTS.map((slot) => (
+          <label key={slot} htmlFor={`time-${slot}`}>
+            {MEAL_SHORT[slot]}
+            <input
+              id={`time-${slot}`}
+              type="time"
+              value={prefs[slot]}
+              onChange={(event) => persistPrefs({ ...prefs, [slot]: event.target.value })}
+            />
+          </label>
+        ))}
+      </form>
+
       <div className="meals-toolbar">
         <button className="identity-action" type="button" onClick={() => void fillWeekWithAi()} disabled={aiBusy}>
           <Sparkles size={16} aria-hidden="true" />
@@ -150,6 +194,19 @@ export function MealsPlanner() {
                   {meal ? (
                     <>
                       <strong>{meal.title}</strong>
+                      <label className="slot-time">
+                        Horário
+                        <input
+                          type="time"
+                          aria-label={`Horário do ${MEAL_LABELS[mealType].toLowerCase()}`}
+                          value={meal.time ?? prefs[mealType]}
+                          onChange={(event) =>
+                            void saveTime(date, mealType, meal, event.target.value).catch(() =>
+                              setError("Não deu para salvar o horário."),
+                            )
+                          }
+                        />
+                      </label>
                       <small>
                         {meal.quick ? (
                           <>
@@ -194,8 +251,9 @@ export function MealsPlanner() {
           date={picking.date}
           mealType={picking.mealType}
           weekStart={weekStart}
-          onPick={(recipe) => void saveRecipe(picking.date, picking.mealType, recipe).catch(() => setError("Não deu para salvar essa refeição."))}
-          onCustom={(title) => void saveCustom(picking.date, picking.mealType, title).catch(() => setError("Não deu para salvar essa refeição."))}
+          defaultTime={prefs[picking.mealType]}
+          onPick={(recipe, time) => void saveRecipe(picking.date, picking.mealType, recipe, time).catch(() => setError("Não deu para salvar essa refeição."))}
+          onCustom={(title, time) => void saveCustom(picking.date, picking.mealType, title, time).catch(() => setError("Não deu para salvar essa refeição."))}
           onClose={() => setPicking(null)}
         />
       ) : null}
@@ -207,6 +265,7 @@ function MealPicker({
   date,
   mealType,
   weekStart,
+  defaultTime,
   onPick,
   onCustom,
   onClose,
@@ -214,13 +273,15 @@ function MealPicker({
   date: string;
   mealType: MealType;
   weekStart: string;
-  onPick: (recipe: Recipe) => void;
-  onCustom: (title: string) => void;
+  defaultTime: string;
+  onPick: (recipe: Recipe, time: string) => void;
+  onCustom: (title: string, time: string) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [maxMinutes, setMaxMinutes] = useState<number | undefined>(undefined);
   const [custom, setCustom] = useState("");
+  const [time, setTime] = useState(defaultTime);
   const [ai, setAi] = useState<RecipeSuggestion[]>([]);
   const [aiError, setAiError] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -254,7 +315,7 @@ function MealPicker({
 
   function submitCustom(event: FormEvent) {
     event.preventDefault();
-    if (custom.trim()) onCustom(custom.trim());
+    if (custom.trim()) onCustom(custom.trim(), time);
   }
 
   return (
@@ -267,6 +328,9 @@ function MealPicker({
         <p className="eyebrow">{formatWeekdayShort(date)} · {MEAL_LABELS[mealType]}</p>
         <h2 id="picker-title">Escolher refeição</h2>
         <p className="picker-lead">Catálogo completo, busca, receita escrita na mão e sugestão da IA.</p>
+
+        <label className="picker-search" htmlFor="meal-time">Horário</label>
+        <input id="meal-time" type="time" value={time} onChange={(event) => setTime(event.target.value)} />
 
         <label className="picker-search" htmlFor="recipe-search">Buscar receita</label>
         <input
@@ -302,7 +366,7 @@ function MealPicker({
                 const recipe = RECIPES.find((entry) => entry.id === item.id);
                 return (
                   <li key={`ai-${item.id}`}>
-                    <button type="button" onClick={() => recipe && onPick(recipe)}>
+                    <button type="button" onClick={() => recipe && onPick(recipe, time)}>
                       <strong>{item.title}</strong>
                       <span>
                         {item.prepMinutes} min{item.quick ? " · rápida" : ""}
@@ -320,7 +384,7 @@ function MealPicker({
         <ul className="recipe-list" aria-label="Catálogo de receitas">
           {recipes.map((recipe) => (
             <li key={recipe.id}>
-              <button type="button" onClick={() => onPick(recipe)}>
+              <button type="button" onClick={() => onPick(recipe, time)}>
                 <strong>{recipe.title}</strong>
                 <span>
                   {recipe.prepMinutes} min{recipe.quick ? " · rápida" : ""} · {recipe.ingredients.map((item) => item.name).slice(0, 3).join(", ")}

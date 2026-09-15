@@ -972,7 +972,7 @@ a:focus-visible {
     width: auto;
     height: calc(74px + env(safe-area-inset-bottom));
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 2px;
     padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--line-strong);
@@ -1563,8 +1563,100 @@ a:focus-visible {
 
 @media (max-width: 720px) {
   .suggestion-grid,
-  .ai-ask-row {
+  .ai-ask-row,
+  .times-row {
     grid-template-columns: 1fr;
   }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pedir-link {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sage-soft);
+  color: var(--sage-deep);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.check-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.times-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 22px;
+}
+
+.times-row label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.times-row input {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.slot-time {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 2px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.slot-time input {
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.reminder-banner {
+  position: fixed;
+  z-index: 24;
+  right: 16px;
+  bottom: 92px;
+  width: min(calc(100% - 32px), 360px);
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(32, 35, 29, 0.12);
+}
+
+.reminder-banner p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 650;
 }
 

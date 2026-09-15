@@ -55,6 +55,7 @@ const internalHouseholdRoutes: FastifyPluginAsync<HouseholdRouteDependencies> = 
       recipeId?: string | null;
       title?: string;
       weekStart: string;
+      time?: string;
     };
     try {
       await reply.send(await dependencies.householdService.saveMeal(authenticated.user.id, body));
@@ -172,6 +173,27 @@ const internalHouseholdRoutes: FastifyPluginAsync<HouseholdRouteDependencies> = 
     if (!authenticated) return;
     const body = (request.body ?? {}) as { mealType?: "breakfast" | "lunch" | "dinner" };
     await reply.send(await dependencies.householdService.catalog(body.mealType));
+  });
+
+  app.post("/prefs/get", async (request, reply) => {
+    const authenticated = await withUser(request, reply);
+    if (!authenticated) return;
+    try {
+      await reply.send(await dependencies.householdService.getPrefs(authenticated.user.id));
+    } catch (error) {
+      await sendRequestFailure(request, reply, statusOf(error));
+    }
+  });
+
+  app.post("/prefs/save", async (request, reply) => {
+    const authenticated = await withUser(request, reply);
+    if (!authenticated) return;
+    const body = request.body as { breakfast: string; lunch: string; dinner: string };
+    try {
+      await reply.send(await dependencies.householdService.savePrefs(authenticated.user.id, body));
+    } catch (error) {
+      await sendRequestFailure(request, reply, statusOf(error));
+    }
   });
 
   app.post("/assistant/run", async (request, reply) => {

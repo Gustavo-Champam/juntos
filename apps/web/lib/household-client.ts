@@ -24,7 +24,11 @@ export const household = {
   catalog: (mealType?: string) => post("recipes.catalog", mealType ? { mealType } : {}),
   agenda: (from: string, to: string) => post("agenda.list", { from, to }),
   createAgenda: (event: Record<string, unknown>) => post("agenda.create", { event }),
+  updateAgenda: (id: string, expectedVersion: number, event: Record<string, unknown>) =>
+    post("agenda.update", { id, expectedVersion, event }),
   deleteAgenda: (id: string, expectedVersion: number) =>
     post("agenda.delete", { id, expectedVersion, confirmed: true }),
+  prefs: () => post("prefs.get"),
+  savePrefs: (body: { breakfast: string; lunch: string; dinner: string }) => post("prefs.save", body),
   assistant: (command: string) => post("assistant.run", { command }),
 };

@@ -3,13 +3,14 @@ import { addCivilDays, civilToday, parseCivilDate, weekday } from "@juntos/contr
 import type { AgendaService } from "../agenda/agenda-service.js";
 import { omniChat } from "./omniroute.js";
 import { foldName } from "./recipe-suggest.js";
+import { formatMealTitle } from "./format-title.js";
 import { getRecipe, MEAL_LABELS, RECIPES } from "./recipes.js";
 import type { HouseholdService } from "./household-service.js";
 import type { MealType } from "./types.js";
 
 export type AssistantAction =
   | { type: "agenda"; title: string; date: string; time: string; location: string; durationMinutes: number }
-  | { type: "meal"; date: string; mealType: MealType; title: string; recipeId: string | null }
+  | { type: "meal"; date: string; mealType: MealType; title: string; recipeId: string | null; time?: string }
   | { type: "shopping"; name: string; quantity: string };
 
 export type AssistantResult = AssistantAction & { ok: boolean; detail: string };
@@ -66,12 +67,16 @@ export function extractSpokenTime(text: string): string | null {
 
 function matchRecipe(title: string, mealType?: MealType) {
   const tokens = foldName(title).split(" ").filter((token) => token.length > 2 && token !== "com");
-  let best: { id: string; score: number } | null = null;
+  let best: { id: string; score: number; leftover: number } | null = null;
   for (const recipe of RECIPES) {
     if (mealType && recipe.mealType !== mealType) continue;
     const haystack = foldName(`${recipe.title} ${recipe.ingredients.map((item) => item.name).join(" ")}`);
     const score = tokens.filter((token) => haystack.includes(token)).length;
-    if (score >= 2 && (!best || score > best.score)) best = { id: recipe.id, score };
+    const leftover = tokens.filter((token) => !haystack.includes(token)).length;
+    if (score < 2 || leftover > 0) continue;
+    if (!best || score - leftover > best.score - best.leftover) {
+      best = { id: recipe.id, score, leftover };
+    }
   }
   return best ? getRecipe(best.id) : undefined;
 }
@@ -98,14 +103,29 @@ export function parseAssistantCommand(text: string, today = civilToday()): Assis
     const title = (mealMatch[2] ?? "").replace(/\s+e que .*$/, "").trim();
     if (title) {
       const recipe = matchRecipe(title, mealType);
+      const mealTime = extractSpokenTime(mealMatch[0]);
       actions.push({
         type: "meal",
         date,
         mealType,
-        title: recipe?.title ?? title.slice(0, 1).toUpperCase() + title.slice(1),
+        title: recipe?.title ?? formatMealTitle(title),
         recipeId: recipe?.id ?? null,
+        ...(mealTime ? { time: mealTime } : {}),
       });
     }
+  } else if (/\b(arroz|feijao|tilapia|salada|frango|carne|bife|macarrao|ovo)\b/.test(folded)) {
+    const plate = text.replace(/^(hoje|amanhã|amanha)[,:]?\s+/i, "").trim();
+    const mealType = mealTypeFrom(folded) ?? "lunch";
+    const recipe = matchRecipe(plate, mealType);
+    const mealTime = extractSpokenTime(plate);
+    actions.push({
+      type: "meal",
+      date,
+      mealType,
+      title: recipe?.title ?? formatMealTitle(plate),
+      recipeId: recipe?.id ?? null,
+      ...(mealTime ? { time: mealTime } : {}),
+    });
   }
 
   const wantsAgenda = /\b(agenda|consulta|compromisso|reuniao|exame|medico|dentista|faculdade)\b/.test(folded);
@@ -187,8 +207,9 @@ function actionsFromModel(raw: unknown, today: string): AssistantAction[] {
           type: "meal",
           date: parseCivilDate(date),
           mealType,
-          title: recipe?.title ?? title.slice(0, 120),
+          title: recipe?.title ?? formatMealTitle(title),
           recipeId: recipe?.id ?? null,
+          ...("time" in row && typeof row.time === "string" ? { time: row.time } : {}),
         });
       } catch {
         continue;
@@ -294,6 +315,7 @@ export class AssistantService {
             recipeId: action.recipeId,
             title: action.title,
             weekStart: startOfWeek(action.date),
+            ...(action.time ? { time: action.time } : {}),
           });
           results.push({
             ...action,

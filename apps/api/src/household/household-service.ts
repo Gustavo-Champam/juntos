@@ -15,6 +15,7 @@ import {
   type Recipe,
 } from "./recipes.js";
 import type { IngredientCategory, MealType } from "./types.js";
+import { DEFAULT_MEAL_TIMES, formatMealTitle, normalizeMealTime } from "./format-title.js";
 
 export class HouseholdInputError extends Error {
   constructor(message = "invalid_household_input") {
@@ -31,6 +32,7 @@ export type PlannedMeal = {
   title: string;
   prepMinutes: number;
   quick: boolean;
+  time: string;
 };
 
 export type ShoppingItem = {
@@ -51,6 +53,7 @@ type MealRow = {
   title: string;
   prep_minutes: number;
   quick: boolean;
+  time: string;
 };
 
 type ItemRow = {
@@ -82,9 +85,10 @@ function mapMeal(row: MealRow): PlannedMeal {
     date: civil(row.date),
     mealType: row.meal_type,
     recipeId: row.recipe_id,
-    title: row.title,
+    title: row.recipe_id ? row.title : formatMealTitle(row.title),
     prepMinutes: Number(row.prep_minutes),
     quick: Boolean(row.quick),
+    time: normalizeMealTime(row.time, row.meal_type),
   };
 }
 
@@ -197,7 +201,7 @@ export class HouseholdService {
   async listMeals(userId: string, from: string, to: string): Promise<PlannedMeal[]> {
     return withMemberTransaction(this.database, userId, async (client, spaceId) => {
       const result = await client.query<MealRow>(
-        `SELECT id, date, meal_type, recipe_id, title, prep_minutes, quick
+        `SELECT id, date, meal_type, recipe_id, title, prep_minutes, quick, time
          FROM meal_plans
          WHERE space_id = $1 AND date >= $2 AND date <= $3
          ORDER BY date, meal_type`,
@@ -209,10 +213,17 @@ export class HouseholdService {
 
   async saveMeal(
     userId: string,
-    input: { date: string; mealType: MealType; recipeId?: string | null; title?: string; weekStart: string },
+    input: {
+      date: string;
+      mealType: MealType;
+      recipeId?: string | null;
+      title?: string;
+      weekStart: string;
+      time?: string;
+    },
   ): Promise<PlannedMeal> {
     const recipe = getRecipe(input.recipeId);
-    const title = recipe?.title ?? input.title?.trim() ?? "";
+    const title = recipe?.title ?? formatMealTitle(input.title?.trim() ?? "");
     if (!title) throw new HouseholdInputError("Escolha uma refeição.");
     return withMemberTransaction(this.database, userId, async (client, spaceId) => {
       const date = parseCivilDate(input.date);
@@ -224,24 +235,39 @@ export class HouseholdService {
       const id = existing.rows[0]?.id ?? randomUUID();
       const prep = recipe?.prepMinutes ?? 20;
       const quick = recipe?.quick ?? prep <= 20;
+      const prefs = await client.query<{ breakfast_time: string; lunch_time: string; dinner_time: string }>(
+        `INSERT INTO space_prefs (space_id) VALUES ($1)
+         ON CONFLICT (space_id) DO UPDATE SET space_id = space_prefs.space_id
+         RETURNING breakfast_time, lunch_time, dinner_time`,
+        [spaceId],
+      );
+      const row = prefs.rows[0];
+      const slotDefault = row
+        ? input.mealType === "breakfast"
+          ? row.breakfast_time
+          : input.mealType === "lunch"
+            ? row.lunch_time
+            : row.dinner_time
+        : DEFAULT_MEAL_TIMES[input.mealType];
+      const time = normalizeMealTime(input.time ?? slotDefault, input.mealType);
       if (existing.rows[0]) {
         await client.query(
           `UPDATE meal_plans
-           SET recipe_id = $1, title = $2, prep_minutes = $3, quick = $4, updated_by = $5, updated_at = now()
-           WHERE id = $6`,
-          [recipe?.id ?? null, title.slice(0, 120), prep, quick, userId, id],
+           SET recipe_id = $1, title = $2, prep_minutes = $3, quick = $4, time = $5, updated_by = $6, updated_at = now()
+           WHERE id = $7`,
+          [recipe?.id ?? null, title.slice(0, 120), prep, quick, time, userId, id],
         );
       } else {
         await client.query(
           `INSERT INTO meal_plans (
-             id, space_id, date, meal_type, recipe_id, title, prep_minutes, quick, updated_by, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
-          [id, spaceId, date, input.mealType, recipe?.id ?? null, title.slice(0, 120), prep, quick, userId],
+             id, space_id, date, meal_type, recipe_id, title, prep_minutes, quick, time, updated_by, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())`,
+          [id, spaceId, date, input.mealType, recipe?.id ?? null, title.slice(0, 120), prep, quick, time, userId],
         );
       }
       await rebuildShopping(client, spaceId, weekStart);
       const saved = await client.query<MealRow>(
-        `SELECT id, date, meal_type, recipe_id, title, prep_minutes, quick FROM meal_plans WHERE id = $1`,
+        `SELECT id, date, meal_type, recipe_id, title, prep_minutes, quick, time FROM meal_plans WHERE id = $1`,
         [id],
       );
       return mapMeal(saved.rows[0]!);
@@ -496,5 +522,40 @@ export class HouseholdService {
       };
     }
     return { ok: true, suggestions: picked };
+  }
+
+  async getPrefs(userId: string) {
+    return withMemberTransaction(this.database, userId, async (client, spaceId) => {
+      const result = await client.query<{ breakfast_time: string; lunch_time: string; dinner_time: string }>(
+        `INSERT INTO space_prefs (space_id) VALUES ($1)
+         ON CONFLICT (space_id) DO UPDATE SET space_id = space_prefs.space_id
+         RETURNING breakfast_time, lunch_time, dinner_time`,
+        [spaceId],
+      );
+      const row = result.rows[0];
+      return {
+        breakfast: row?.breakfast_time ?? DEFAULT_MEAL_TIMES.breakfast,
+        lunch: row?.lunch_time ?? DEFAULT_MEAL_TIMES.lunch,
+        dinner: row?.dinner_time ?? DEFAULT_MEAL_TIMES.dinner,
+      };
+    });
+  }
+
+  async savePrefs(userId: string, input: { breakfast: string; lunch: string; dinner: string }) {
+    const breakfast = normalizeMealTime(input.breakfast, "breakfast");
+    const lunch = normalizeMealTime(input.lunch, "lunch");
+    const dinner = normalizeMealTime(input.dinner, "dinner");
+    return withMemberTransaction(this.database, userId, async (client, spaceId) => {
+      await client.query(
+        `INSERT INTO space_prefs (space_id, breakfast_time, lunch_time, dinner_time)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (space_id) DO UPDATE SET
+           breakfast_time = EXCLUDED.breakfast_time,
+           lunch_time = EXCLUDED.lunch_time,
+           dinner_time = EXCLUDED.dinner_time`,
+        [spaceId, breakfast, lunch, dinner],
+      );
+      return { breakfast, lunch, dinner };
+    });
   }
 }

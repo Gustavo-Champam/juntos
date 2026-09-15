@@ -24,7 +24,10 @@ describe("product pages", () => {
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? "{}")) as { op?: string };
       if (body.op === "agenda.list") {
-        return Response.json({ changed: true, snapshot: { occurrences: [] } });
+        return Response.json({ changed: true, snapshot: { occurrences: [], members: [] } });
+      }
+      if (body.op === "prefs.get") {
+        return Response.json({ breakfast: "07:15", lunch: "12:30", dinner: "19:00" });
       }
       return Response.json([]);
     }));
@@ -53,6 +56,7 @@ describe("product pages", () => {
     expect(days).toHaveLength(7);
     fireEvent.click(screen.getAllByRole("button", { name: /Escolher café/i })[0]!);
 
+    expect(screen.getByRole("form", { name: "Horários das refeições" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Escolher refeição" })).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Catálogo de receitas" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Iogurte, fruta e granola/i })).toBeInTheDocument();

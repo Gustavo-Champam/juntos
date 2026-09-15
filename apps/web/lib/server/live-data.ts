@@ -58,6 +58,7 @@ export async function loadHomeDay(date = civilToday()): Promise<{
         title: string;
         prepMinutes: number;
         quick: boolean;
+        time?: string;
       }>
     >("/internal/meals/list", { from: date, to: date }, token),
   ]);
@@ -77,7 +78,7 @@ export async function loadHomeDay(date = civilToday()): Promise<{
   const planned: PlannedMeal[] = (meals ?? []).map((meal) => ({
     id: meal.id,
     title: meal.title,
-    startsAt: civilInstant(meal.date, MEAL_TIMES[meal.mealType] ?? "12:30"),
+    startsAt: civilInstant(meal.date, meal.time || MEAL_TIMES[meal.mealType] || "12:30"),
     mealType: meal.mealType,
     quick: meal.quick,
     prepMinutes: meal.prepMinutes,

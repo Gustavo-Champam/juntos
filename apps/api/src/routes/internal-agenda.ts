@@ -50,6 +50,22 @@ const internalAgendaRoutes: FastifyPluginAsync<AgendaRouteDependencies> = async 
     }
   });
 
+  app.post("/agenda/update", async (request, reply) => {
+    const authenticated = await authenticateSession(request, reply, dependencies.sessionService);
+    if (!authenticated) return;
+    const body = request.body as { id: string; expectedVersion: number; event: never };
+    try {
+      await reply.send(
+        await dependencies.agendaService.update(authenticated.user.id, body.id, {
+          expectedVersion: body.expectedVersion,
+          event: body.event,
+        }),
+      );
+    } catch (error) {
+      await sendRequestFailure(request, reply, statusOf(error));
+    }
+  });
+
   app.post("/agenda/delete", async (request, reply) => {
     const authenticated = await authenticateSession(request, reply, dependencies.sessionService);
     if (!authenticated) return;

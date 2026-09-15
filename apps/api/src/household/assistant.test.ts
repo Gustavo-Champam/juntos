@@ -21,9 +21,38 @@ describe("assistant parser", () => {
           type: "meal",
           mealType: "dinner",
           date: "2026-09-16",
+          title: "Arroz, feijão e carne",
         }),
       ]),
     );
+    expect(actions.find((action) => action.type === "meal")).not.toHaveProperty("time");
+  });
+
+  it("formats a spoken plate and assumes lunch when no meal is named", () => {
+    const actions = parseAssistantCommand(
+      "Hoje arroz feijao tilapia grelhada e salada",
+      "2026-09-15",
+    );
+    expect(actions).toEqual([
+      expect.objectContaining({
+        type: "meal",
+        mealType: "lunch",
+        date: "2026-09-15",
+        title: "Arroz, feijão, tilápia grelhada e salada",
+      }),
+    ]);
+  });
+
+  it("keeps a time said next to the meal", () => {
+    const actions = parseAssistantCommand("jantar 20h arroz feijao e carne", "2026-09-15");
+    expect(actions).toEqual([
+      expect.objectContaining({
+        type: "meal",
+        mealType: "dinner",
+        time: "20:00",
+        title: "Arroz, feijão e carne",
+      }),
+    ]);
   });
 
   it("resolves hoje and weekday names", () => {

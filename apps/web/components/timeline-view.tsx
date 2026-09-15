@@ -13,7 +13,7 @@ import {
   Sparkles,
   UsersRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { buildTimeline } from "@/features/timeline/build-timeline";
@@ -23,6 +23,7 @@ import type {
   PlannedMeal,
   TimelineItem,
 } from "@/features/timeline/types";
+import { loadDay } from "@/lib/day-load";
 
 type TimelineViewProps = {
   initialDate: string;
@@ -102,11 +103,33 @@ function TimelineIcon({ item }: Readonly<{ item: TimelineItem }>) {
 
 export function TimelineView({
   initialDate,
-  events,
-  meals,
+  events: seedEvents,
+  meals: seedMeals,
 }: Readonly<TimelineViewProps>) {
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [adding, setAdding] = useState(false);
+  const [events, setEvents] = useState(seedEvents);
+  const [meals, setMeals] = useState(seedMeals);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadDay(selectedDate)
+      .then((day) => {
+        if (!cancelled) {
+          setEvents(day.events);
+          setMeals(day.meals);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && selectedDate === initialDate) {
+          setEvents(seedEvents);
+          setMeals(seedMeals);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, initialDate, seedEvents, seedMeals]);
   const timeline = useMemo(
     () => buildTimeline({ date: selectedDate, events, meals }),
     [events, meals, selectedDate],

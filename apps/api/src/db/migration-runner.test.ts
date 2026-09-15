@@ -39,6 +39,7 @@ describe("applyMigrations", () => {
       "schema_migrations",
       "sessions",
       "shopping_items",
+      "space_prefs",
       "users",
     ]);
 
@@ -70,6 +71,7 @@ describe("applyMigrations", () => {
       { filename: "0001_identity.sql" },
       { filename: "0002_agenda.sql" },
       { filename: "0003_meals_shopping.sql" },
+      { filename: "0004_meal_time.sql" },
     ]);
   });
 });
