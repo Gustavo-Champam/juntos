@@ -49,6 +49,15 @@ describe("OAuth routes", () => {
     expect(jar.writes).toHaveLength(0);
   });
 
+  it("sends browsers back to entrar instead of raw JSON when Google start cannot run", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "");
+    const response = await start(new Request(`${origin}/api/auth/google/start`, {
+      headers: { accept: "text/html" },
+    }));
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`${origin}/entrar?erro=login`);
+  });
+
   it("starts Google login with state, nonce and S256 and private ten-minute cookies", async () => {
     const response = await start(new Request(`${origin}/api/auth/google/start`));
     expect(response.status).toBe(303);

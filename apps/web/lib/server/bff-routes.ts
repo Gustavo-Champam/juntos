@@ -20,8 +20,14 @@ class RequestFailure extends Error {
   constructor(readonly status: number) { super("request_failed"); }
 }
 
-function failure(error: unknown) {
+function failure(error: unknown, request?: Request) {
   const status = error instanceof SameOriginError ? 403 : error instanceof RequestFailure ? error.status : 502;
+  const accept = request?.headers.get("accept") ?? "";
+  if (request && request.method === "GET" && accept.includes("text/html")) {
+    const url = new URL("/entrar", request.url);
+    url.searchParams.set("erro", "login");
+    return seeOther(url);
+  }
   return Response.json({ error: "request_failed" }, { status, headers: privateHeaders });
 }
 
@@ -81,7 +87,7 @@ export async function startGoogle(request: Request) {
       code_challenge_method: "S256",
     }).toString();
     return seeOther(destination);
-  } catch (error) { return failure(error); }
+  } catch (error) { return failure(error, request); }
 }
 
 export async function googleCallback(request: Request) {
@@ -104,7 +110,7 @@ export async function googleCallback(request: Request) {
     const payload = googleExchangeResponseSchema.parse(await response.json());
     setSessionCookie(store, payload.sessionToken);
     return seeOther(new URL(attempt.returnTo, request.url));
-  } catch (error) { return failure(error); }
+  } catch (error) { return failure(error, request); }
 }
 
 export async function getBootstrap() {

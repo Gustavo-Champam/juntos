@@ -859,7 +859,8 @@ a:focus-visible {
 .selectable-link:focus { outline: 3px solid color-mix(in srgb, var(--focus) 70%, white); outline-offset: 2px; }
 
 .identity-form [role="alert"],
-.leave-form [role="alert"] { margin: 0; color: var(--clay-deep); font-size: 13px; font-weight: 700; }
+.leave-form [role="alert"],
+.identity-card > [role="alert"] { margin: 0; color: var(--clay-deep); font-size: 13px; font-weight: 700; }
 
 .identity-action,
 .danger-button,
