@@ -39,12 +39,15 @@ type MemberRow = { id: string; name: string; avatar_url: string | null };
 
 type StoreDependencies = { now?: () => Date; id?: () => string };
 
-const EVENT_COLUMNS = `id, space_id, title, date, time, duration_minutes, location, notes,
+const EVENT_INSERT_COLUMNS = `id, space_id, title, date, time, duration_minutes, location, notes,
   assignee_id, weekly, recurrence_until, version, created_by, updated_by, created_at, updated_at, deleted_at`;
+const EVENT_ROW_COLUMNS = `id, space_id, title, agenda_events.date::text AS date, time, duration_minutes,
+  location, notes, assignee_id, weekly, agenda_events.recurrence_until::text AS recurrence_until,
+  version, created_by, updated_by, created_at, updated_at, deleted_at`;
 
-function civilDate(value: Date | string): string {
+function civilDate(value: unknown): string {
   if (typeof value === "string") return parseCivilDate(value);
-  if (Number.isNaN(value.getTime())) throw new Error("invalid agenda date row");
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw new Error("invalid agenda date row");
   const year = value.getFullYear().toString().padStart(4, "0");
   const month = (value.getMonth() + 1).toString().padStart(2, "0");
   const day = value.getDate().toString().padStart(2, "0");
@@ -95,7 +98,7 @@ export class PostgresAgendaStore implements AgendaStore {
       const [state, events, members] = await Promise.all([
         client.query<RevisionRow>("SELECT revision FROM agenda_state WHERE space_id = $1", [spaceId]),
         client.query<EventRow>(
-          `SELECT ${EVENT_COLUMNS} FROM agenda_events
+          `SELECT ${EVENT_ROW_COLUMNS} FROM agenda_events
            WHERE space_id = $1 AND deleted_at IS NULL
            ORDER BY date, time, id`,
           [spaceId],
@@ -120,9 +123,9 @@ export class PostgresAgendaStore implements AgendaStore {
       await this.requireAssignee(client, spaceId, input.event.assigneeId);
       const now = this.now();
       const result = await client.query<EventRow>(
-        `INSERT INTO agenda_events (${EVENT_COLUMNS})
+        `INSERT INTO agenda_events (${EVENT_INSERT_COLUMNS})
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, $12, $12, $13, $13, NULL)
-         RETURNING ${EVENT_COLUMNS}`,
+         RETURNING ${EVENT_ROW_COLUMNS}`,
         [
           this.id(), spaceId, input.event.title, input.event.date, input.event.time, input.event.durationMinutes,
           input.event.location, input.event.notes, input.event.assigneeId, input.event.recurrence !== null,
@@ -148,7 +151,7 @@ export class PostgresAgendaStore implements AgendaStore {
            location=$8, notes=$9, assignee_id=$10, weekly=$11, recurrence_until=$12,
            version=version+1, updated_by=$13, updated_at=$14
          WHERE space_id=$1 AND id=$2 AND version=$3 AND deleted_at IS NULL
-         RETURNING ${EVENT_COLUMNS}`,
+         RETURNING ${EVENT_ROW_COLUMNS}`,
         [
           spaceId, id, input.expectedVersion, input.event.title, input.event.date, input.event.time,
           input.event.durationMinutes, input.event.location, input.event.notes, input.event.assigneeId,
@@ -171,7 +174,7 @@ export class PostgresAgendaStore implements AgendaStore {
       const result = await client.query<EventRow>(
         `UPDATE agenda_events SET deleted_at=$4, version=version+1, updated_by=$5, updated_at=$4
          WHERE space_id=$1 AND id=$2 AND version=$3 AND deleted_at IS NULL
-         RETURNING ${EVENT_COLUMNS}`,
+         RETURNING ${EVENT_ROW_COLUMNS}`,
         [spaceId, id, input.expectedVersion, now, userId],
       );
       const row = result.rows[0];
@@ -184,7 +187,7 @@ export class PostgresAgendaStore implements AgendaStore {
 
   private async lockEvent(client: PoolClient, spaceId: string, id: string): Promise<AgendaEvent> {
     const result = await client.query<EventRow>(
-      `SELECT ${EVENT_COLUMNS} FROM agenda_events WHERE space_id = $1 AND id = $2 FOR UPDATE`,
+      `SELECT ${EVENT_ROW_COLUMNS} FROM agenda_events WHERE space_id = $1 AND id = $2 FOR UPDATE`,
       [spaceId, id],
     );
     const row = result.rows[0];

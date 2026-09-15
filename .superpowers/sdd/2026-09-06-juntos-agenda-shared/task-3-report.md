@@ -46,3 +46,25 @@
 - `npm --workspace @juntos/api run typecheck` — passed.
 - `npm test` — deployment 5, API 82, web 108, contracts 19 tests passed.
 - `git diff --check` — passed.
+
+## Fix round 2/5 — project civil dates at the SQL boundary
+
+### RED
+
+- Extended the store regression to record every event-row SQL path: create `RETURNING`, read `SELECT`, update locked-row `SELECT` and `RETURNING`, stale-conflict locked-row `SELECT`, and delete locked-row `SELECT` and `RETURNING`.
+- Added row-corruption regressions for non-string/non-`Date` `date` and `recurrence_until` values.
+- The focused run failed as intended: event statements did not project `agenda_events.date::text AS date` or `agenda_events.recurrence_until::text AS recurrence_until`, and an invalid value produced an incidental `getTime` TypeError.
+
+### GREEN
+
+- Every event row projection now uses the required native PostgreSQL text casts, including each `RETURNING` and the lock/read queries. Production mapping therefore receives civil strings directly from PostgreSQL and no longer depends on the process timezone.
+- The central mapper validates text through `parseCivilDate` and retains a guarded `Date` fallback only for pg-mem. The shared agenda test pool rewrites these two projections for pg-mem's unsupported date-to-text cast while preserving the original SQL for assertion; real PostgreSQL receives the native casts unchanged.
+- Unexpected row values now raise the intentional `invalid agenda date row` failure.
+
+### Verification
+
+- `npm --workspace @juntos/api test -- postgres-agenda-store` — 1 file, 9 tests passed.
+- `npm --workspace @juntos/api test` — 16 files, 84 tests passed.
+- `npm --workspace @juntos/api run typecheck` — passed.
+- `npm test` — deployment 5, API 84, web 108, contracts 19 tests passed.
+- `git diff --check` — passed.

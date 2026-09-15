@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { DataType, newDb } from "pg-mem";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import { applyMigrations } from "../db/migration-runner.js";
 import { PostgresIdentityStore } from "../identity/postgres-identity-store.js";
@@ -14,6 +14,37 @@ const biaId = "00000000-0000-0000-0000-000000000002";
 const claraId = "00000000-0000-0000-0000-000000000003";
 const createdAt = new Date("2026-09-05T12:00:00.000Z");
 const expiresAt = new Date("2026-09-12T12:00:00.000Z");
+
+function pgMemCompatiblePool(pool: Pool): Pool {
+  const rewrite = (statement: unknown): unknown => {
+    if (typeof statement !== "string") return statement;
+    return statement
+      .replaceAll("agenda_events.date::text AS date", "date AS date")
+      .replaceAll("agenda_events.recurrence_until::text AS recurrence_until", "recurrence_until AS recurrence_until");
+  };
+  const wrapClient = (client: PoolClient): PoolClient => new Proxy(client, {
+    get(target, property, receiver) {
+      if (property === "query") {
+        return (statement: unknown, ...rest: unknown[]) =>
+          (target.query as (...args: unknown[]) => unknown)(rewrite(statement), ...rest);
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+  return new Proxy(pool, {
+    get(target, property, receiver) {
+      if (property === "query") {
+        return (statement: unknown, ...rest: unknown[]) =>
+          (target.query as (...args: unknown[]) => unknown)(rewrite(statement), ...rest);
+      }
+      if (property === "connect") return async () => wrapClient(await target.connect());
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
 
 export async function createAgendaTestDatabase(): Promise<{
   pool: Pool;
@@ -30,7 +61,7 @@ export async function createAgendaTestDatabase(): Promise<{
     implementation: () => 32,
   });
   const adapter = database.adapters.createPg();
-  const pool = new adapter.Pool();
+  const pool = pgMemCompatiblePool(new adapter.Pool());
   await applyMigrations(pool, migrationsDirectory);
 
   const identity = new PostgresIdentityStore(pool);

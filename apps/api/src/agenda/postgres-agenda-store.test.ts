@@ -32,7 +32,7 @@ function createStore(pool: Awaited<ReturnType<typeof createAgendaTestDatabase>>[
   });
 }
 
-function databaseReturningDateObjectsForUntypedDates(pool: Pool, date: Date, recurrenceUntil: Date): Database {
+function databaseReturningEventValues(pool: Pool, date: unknown, recurrenceUntil: unknown): Database {
   return {
     query: pool.query.bind(pool),
     async connect() {
@@ -55,6 +55,26 @@ function databaseReturningDateObjectsForUntypedDates(pool: Pool, date: Date, rec
   };
 }
 
+function recordingDatabase(pool: Pool): { database: Database; statements: string[] } {
+  const statements: string[] = [];
+  return {
+    database: {
+      query: pool.query.bind(pool),
+      async connect() {
+        const client = await pool.connect();
+        return {
+          release: () => client.release(),
+          query: async <T extends QueryResultRow>(statement: string, values?: unknown[]): Promise<QueryResult<T>> => {
+            statements.push(statement);
+            return client.query<T>(statement, values);
+          },
+        } as PoolClient;
+      },
+    },
+    statements,
+  };
+}
+
 describe("PostgresAgendaStore", () => {
   it("preserves date and recurrence-until when a PostgreSQL date would cross the UTC day", async () => {
     const f = await createAgendaTestDatabase();
@@ -69,7 +89,7 @@ describe("PostgresAgendaStore", () => {
       expect(pgDate.toISOString().slice(0, 10)).toBe("2026-09-06");
       expect(pgRecurrenceUntil.toISOString().slice(0, 10)).toBe("2026-09-13");
       const store = new PostgresAgendaStore(
-        databaseReturningDateObjectsForUntypedDates(f.pool, pgDate, pgRecurrenceUntil),
+        databaseReturningEventValues(f.pool, pgDate, pgRecurrenceUntil),
       );
 
       const saved = (await store.read(f.anaId)).events[0];
@@ -81,6 +101,44 @@ describe("PostgresAgendaStore", () => {
     } finally {
       if (originalTimezone === undefined) delete process.env.TZ;
       else process.env.TZ = originalTimezone;
+      await f.pool.end();
+    }
+  });
+
+  it("projects civil dates as text for every event row SQL path", async () => {
+    const f = await createAgendaTestDatabase();
+    try {
+      const recorded = recordingDatabase(f.pool);
+      const store = new PostgresAgendaStore(recorded.database, { now: () => fixedNow });
+      const created = await store.create(f.anaId, { event });
+      await store.read(f.anaId);
+      const updated = await store.update(f.biaId, created.id, { expectedVersion: 1, event: { ...event, title: "Prova" } });
+      await expect(store.update(f.anaId, created.id, { expectedVersion: 1, event })).rejects.toMatchObject({ current: updated });
+      await store.delete(f.anaId, created.id, { expectedVersion: 2, confirmed: true });
+
+      const eventStatements = recorded.statements.filter((statement) => statement.toLowerCase().includes("agenda_events"));
+      expect(eventStatements).toHaveLength(7);
+      for (const statement of eventStatements) {
+        expect(statement.toLowerCase()).toContain("agenda_events.date::text as date");
+        expect(statement.toLowerCase()).toContain("agenda_events.recurrence_until::text as recurrence_until");
+      }
+    } finally {
+      await f.pool.end();
+    }
+  });
+
+  it("fails intentionally when an event row supplies a non-date value", async () => {
+    const f = await createAgendaTestDatabase();
+    try {
+      await createStore(f.pool).create(f.anaId, {
+        event: { ...event, recurrence: { frequency: "weekly", until: "2026-09-14" } },
+      });
+
+      await expect(new PostgresAgendaStore(databaseReturningEventValues(f.pool, 42, null)).read(f.anaId))
+        .rejects.toThrow("invalid agenda date row");
+      await expect(new PostgresAgendaStore(databaseReturningEventValues(f.pool, "2026-09-07", 42)).read(f.anaId))
+        .rejects.toThrow("invalid agenda date row");
+    } finally {
       await f.pool.end();
     }
   });
